@@ -33,6 +33,7 @@ export default function DrawerLayout() {
             headerLeft: () => <BackButton />,
           }}
         />
+
         <Drawer.Screen
           name="camera"
           options={{

@@ -1,438 +1,311 @@
-import { Image } from 'expo-image';
-import { StyleSheet, ScrollView, View, Text, Pressable, Modal, Alert, TouchableOpacity, TextInput } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { 
+  View, Text, StyleSheet, FlatList, RefreshControl, 
+  TouchableOpacity, TextInput, Alert, ScrollView, Modal,
+  Image
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useMemo } from 'react';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
-import { Image as RNImage } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 
-const STORAGE_KEY = '@gallery_photos_v1';
-const HIDDEN_PASSWORD = '2106';
-
-// Removed static images for this project since they don't exist here
-const staticRequires = [];
+const PRIORITIES = ['All', 'Low', 'Medium', 'High', 'Critical'];
 
 export default function HistoryScreen() {
-  const [photos, setPhotos] = useState<any[]>([]);
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [fullScreenPhoto, setFullScreenPhoto] = useState<any | null>(null);
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+  
+  const [surveys, setSurveys] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState('All');
+  
+  // Modal State
+  const [selectedSurvey, setSelectedSurvey] = useState(null);
 
-  // Hidden feature state
-  const [isViewingHidden, setIsViewingHidden] = useState(false);
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [])
+  );
 
-  useEffect(() => {
-    loadPhotos();
-  }, []);
-
-  const loadPhotos = async () => {
+  const loadHistory = async () => {
+    setIsRefreshing(true);
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      let loadedPhotos = [];
-      if (stored) {
-        loadedPhotos = JSON.parse(stored);
+      const data = await AsyncStorage.getItem('@surveys_history');
+      if (data) {
+        setSurveys(JSON.parse(data));
       } else {
-        loadedPhotos = staticRequires.map((src, index) => {
-          const pseudoRandom = Math.abs(Math.sin(index + 1)) * 200; 
-          const height = 150 + pseudoRandom;
-          return {
-            id: `static-${index}`,
-            staticIndex: index,
-            height,
-            isFavorite: false,
-            isHidden: false,
-          };
-        });
+        setSurveys([]);
       }
-      
-      // Cleanup for removed static images
-      loadedPhotos = loadedPhotos.filter((p: any) => !p.uri ? p.staticIndex < staticRequires.length : true);
-
-      setPhotos(loadedPhotos);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loadedPhotos));
     } catch (e) {
-      console.log('Error loading photos', e);
+      console.log('Error loading history', e);
     }
+    setIsRefreshing(false);
   };
 
-  const savePhotos = async (newPhotos: any[]) => {
-    setPhotos(newPhotos);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPhotos));
-  };
-
-  const addPhoto = async () => {
-    if (isViewingHidden) {
-      Alert.alert('Not allowed', 'Cannot add photos while viewing hidden gallery.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 1,
-    });
-
-    if (!result.canceled && result.assets.length > 0) {
-      try {
-        const newPhotos = await Promise.all(result.assets.map(async (asset, index) => {
-          const fileName = asset.uri.split('/').pop() || `photo-${Date.now()}-${index}.jpg`;
-          const newUri = (FileSystem.documentDirectory || '') + fileName;
-          
-          await FileSystem.copyAsync({
-            from: asset.uri,
-            to: newUri
-          });
-
-          const pseudoRandom = Math.abs(Math.sin(Date.now() + index)) * 200; 
-          const height = 150 + pseudoRandom;
-
-          return {
-            id: `local-${Date.now()}-${index}`,
-            uri: newUri,
-            height,
-            isFavorite: false,
-            isHidden: false,
-          };
-        }));
-
-        await savePhotos([...newPhotos, ...photos]);
-      } catch (e) {
-        Alert.alert('Error', 'Failed to save one or more photos');
-      }
-    }
-  };
-
-  const deleteSelected = async () => {
-    Alert.alert('Delete Photos', `Are you sure you want to delete ${selectedIds.size} photo(s)?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-          const remaining = photos.filter(p => !selectedIds.has(p.id));
-          
-          photos.forEach(async (p) => {
-            if (selectedIds.has(p.id) && p.uri) {
-              try {
-                await FileSystem.deleteAsync(p.uri, { idempotent: true });
-              } catch(e) {}
+  const deleteSurvey = (id) => {
+    Alert.alert(
+      'Delete Survey',
+      'Are you sure you want to permanently delete this survey? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updated = surveys.filter(s => s.id !== id);
+              setSurveys(updated);
+              await AsyncStorage.setItem('@surveys_history', JSON.stringify(updated));
+              if (selectedSurvey?.id === id) {
+                setSelectedSurvey(null);
+              }
+            } catch (error) {
+              console.log('Error deleting survey', error);
             }
-          });
-
-          await savePhotos(remaining);
-          setSelectedIds(new Set());
-          setIsSelectionMode(false);
-      }}
-    ]);
-  };
-
-  const toggleHideSelected = async () => {
-    const updated = photos.map(p => {
-      if (selectedIds.has(p.id)) {
-        return { ...p, isHidden: !p.isHidden };
-      }
-      return p;
-    });
-    await savePhotos(updated);
-    setSelectedIds(new Set());
-    setIsSelectionMode(false);
-  };
-
-  const toggleSelection = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    setSelectedIds(newSet);
-  };
-
-  const handlePhotoPress = (photo: any) => {
-    if (isSelectionMode) {
-      toggleSelection(photo.id);
-    } else {
-      setFullScreenPhoto(photo);
-    }
-  };
-
-  const toggleFavorite = async (photoId: string) => {
-    const updated = photos.map(p => p.id === photoId ? { ...p, isFavorite: !p.isFavorite } : p);
-    await savePhotos(updated);
-    if (fullScreenPhoto && fullScreenPhoto.id === photoId) {
-      setFullScreenPhoto({ ...fullScreenPhoto, isFavorite: !fullScreenPhoto.isFavorite });
-    }
-  };
-
-  const toggleHidden = async (photoId: string) => {
-    const updated = photos.map(p => p.id === photoId ? { ...p, isHidden: !p.isHidden } : p);
-    await savePhotos(updated);
-    setFullScreenPhoto(null);
-  };
-
-  const sharePhoto = async (photo: any) => {
-    if (isViewingHidden) {
-      Alert.alert('Privacy Restriction', 'Cannot share hidden photos.');
-      return;
-    }
-    const fileUri = photo.uri || RNImage.resolveAssetSource(staticRequires[photo.staticIndex]).uri;
-    const isAvailable = await Sharing.isAvailableAsync();
-    
-    if (isAvailable) {
-      try {
-        await Sharing.shareAsync(fileUri);
-      } catch (e) {
-        Alert.alert('Error', 'Could not share this photo.');
-      }
-    }
-  };
-
-  const saveToGallery = async (photo: any) => {
-    if (isViewingHidden) {
-      Alert.alert('Privacy Restriction', 'Cannot save hidden photos to device gallery.');
-      return;
-    }
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow access to save to your photos.');
-        return;
-      }
-      const fileUri = photo.uri || RNImage.resolveAssetSource(staticRequires[photo.staticIndex]).uri;
-      
-      let localUri = fileUri;
-      if (fileUri.startsWith('http')) {
-        const download = await FileSystem.downloadAsync(fileUri, (FileSystem.cacheDirectory || '') + 'temp.jpg');
-        localUri = download.uri;
-      }
-
-      await MediaLibrary.saveToLibraryAsync(localUri);
-      Alert.alert('Success', 'Photo saved to your gallery!');
-    } catch (e) {
-      Alert.alert('Error', 'Failed to save photo.');
-    }
-  };
-
-  const deleteSinglePhoto = (photoId: string) => {
-    Alert.alert('Delete Photo', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-          const remaining = photos.filter(p => p.id !== photoId);
-          
-          const p = photos.find(x => x.id === photoId);
-          if (p && p.uri) {
-            try { await FileSystem.deleteAsync(p.uri, { idempotent: true }); } catch(e) {}
           }
-          await savePhotos(remaining);
-          setFullScreenPhoto(null);
-      }}
-    ]);
+        }
+      ]
+    );
   };
 
-  const getSource = (item: any) => item.uri ? { uri: item.uri } : staticRequires[item.staticIndex];
-
-  const visiblePhotos = photos.filter(p => !!p.isHidden === isViewingHidden);
-  const leftColumn = visiblePhotos.filter((_, i) => i % 2 === 0);
-  const rightColumn = visiblePhotos.filter((_, i) => i % 2 !== 0);
-
-  const handlePasswordSubmit = () => {
-    if (passwordInput === HIDDEN_PASSWORD) {
-      setShowPasswordPrompt(false);
-      setPasswordInput('');
-      setIsViewingHidden(true);
-    } else {
-      Alert.alert('Error', 'Incorrect password');
-      setPasswordInput('');
+  const getPriorityColor = (p) => {
+    switch (p) {
+      case 'Low': return '#4CAF50';
+      case 'Medium': return '#FF9800';
+      case 'High': return '#FF5722';
+      case 'Critical': return '#F44336';
+      default: return theme.icon;
     }
   };
+
+  const copyToClipboard = async (text, label) => {
+    if (!text) return;
+    await Clipboard.setStringAsync(text);
+    Alert.alert('Copied!', `${label} copied to clipboard.`);
+  };
+
+  const filteredSurveys = useMemo(() => {
+    return surveys.filter(s => {
+      const matchesSearch = (s.siteName?.toLowerCase().includes(searchQuery.toLowerCase())) || 
+                            (s.clientName?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                            (s.id?.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesFilter = selectedFilter === 'All' || s.priority === selectedFilter;
+      return matchesSearch && matchesFilter;
+    });
+  }, [surveys, searchQuery, selectedFilter]);
+
+  const renderItem = ({ item }) => (
+    <TouchableOpacity 
+      style={[styles.historyCard, { backgroundColor: theme.background, borderColor: 'rgba(0,0,0,0.05)' }]}
+      onPress={() => setSelectedSurvey(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>{item.siteName}</Text>
+          <Text style={styles.cardSubtitle} numberOfLines={1}>{item.clientName}</Text>
+        </View>
+        <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
+          <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>{item.priority}</Text>
+        </View>
+      </View>
+      
+      <View style={styles.cardFooter}>
+        <View style={styles.footerItem}>
+          <Ionicons name="calendar-outline" size={14} color="#6B7280" />
+          <Text style={styles.footerText}>{item.dateString}</Text>
+        </View>
+        <View style={styles.footerItem}>
+          <Ionicons name="document-text-outline" size={14} color="#6B7280" />
+          <Text style={styles.footerText}>{item.id}</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity 
+        style={styles.deleteBtn}
+        onPress={() => deleteSurvey(item.id)}
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      >
+        <Ionicons name="trash-outline" size={20} color="#EF4444" />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+    <SafeAreaView style={[styles.container, { backgroundColor: '#F3F4F6' }]} edges={['top']}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>{isViewingHidden ? 'Hidden' : 'History'}</Text>
-          <Text style={styles.headerSubtitle}>
-            {visiblePhotos.length} photos {isSelectionMode ? `(${selectedIds.size} selected)` : ''}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          {isSelectionMode ? (
-            <>
-              {selectedIds.size > 0 && (
-                <TouchableOpacity style={styles.actionBtn} onPress={toggleHideSelected}>
-                  <Ionicons name={isViewingHidden ? "eye" : "eye-off"} size={26} color="#007AFF" />
-                </TouchableOpacity>
-              )}
-              {selectedIds.size > 0 && (
-                <TouchableOpacity style={styles.actionBtn} onPress={deleteSelected}>
-                  <Ionicons name="trash" size={24} color="#FF3B30" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.actionBtn} onPress={() => {
-                setIsSelectionMode(false);
-                setSelectedIds(new Set());
-              }}>
-                <Text style={styles.doneText}>Done</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              {!isViewingHidden && (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => setShowPasswordPrompt(true)}>
-                  <Ionicons name="eye-off-outline" size={26} color="#007AFF" />
-                </TouchableOpacity>
-              )}
-              {isViewingHidden && (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => setIsViewingHidden(false)}>
-                  <Ionicons name="close-circle-outline" size={26} color="#FF3B30" />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.actionBtn} onPress={() => setIsSelectionMode(true)}>
-                <Ionicons name="checkmark-circle-outline" size={26} color="#007AFF" />
-              </TouchableOpacity>
-              {!isViewingHidden && (
-                <TouchableOpacity style={styles.actionBtn} onPress={addPhoto}>
-                  <Ionicons name="add-circle" size={28} color="#007AFF" />
-                </TouchableOpacity>
-              )}
-            </>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Survey History</Text>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: theme.background }]}>
+          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.text }]}
+            placeholder="Search by Site, Client, or ID..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
           )}
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.masonryContainer}>
-          <View style={styles.column}>
-            {leftColumn.map((item) => (
-              <Pressable key={item.id} onPress={() => handlePhotoPress(item)} style={styles.imageWrapper}>
-                <Image 
-                  source={getSource(item)} 
-                  style={[styles.image, { height: item.height }]} 
-                  contentFit="cover"
-                  transition={300}
-                />
-                {isSelectionMode && (
-                  <View style={styles.checkbox}>
-                    {selectedIds.has(item.id) && <Ionicons name="checkmark-circle" size={24} color="#007AFF" />}
-                    {!selectedIds.has(item.id) && <Ionicons name="ellipse-outline" size={24} color="#FFF" />}
-                  </View>
-                )}
-                {item.isFavorite && !isSelectionMode && (
-                  <View style={styles.heartBadge}>
-                    <Ionicons name="heart" size={16} color="#FF2D55" />
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.column}>
-            {rightColumn.map((item) => (
-              <Pressable key={item.id} onPress={() => handlePhotoPress(item)} style={styles.imageWrapper}>
-                <Image 
-                  source={getSource(item)} 
-                  style={[styles.image, { height: item.height }]} 
-                  contentFit="cover"
-                  transition={300}
-                />
-                {isSelectionMode && (
-                  <View style={styles.checkbox}>
-                    {selectedIds.has(item.id) && <Ionicons name="checkmark-circle" size={24} color="#007AFF" />}
-                    {!selectedIds.has(item.id) && <Ionicons name="ellipse-outline" size={24} color="#FFF" />}
-                  </View>
-                )}
-                {item.isFavorite && !isSelectionMode && (
-                  <View style={styles.heartBadge}>
-                    <Ionicons name="heart" size={16} color="#FF2D55" />
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Full Screen Modal */}
-      <Modal visible={!!fullScreenPhoto} transparent={false} animationType="fade">
-        <View style={styles.modalContainer}>
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={() => setFullScreenPhoto(null)}
-          >
-            <Ionicons name="close" size={30} color="#FFF" />
-          </TouchableOpacity>
-          
-          {fullScreenPhoto && (
-            <Image 
-              source={getSource(fullScreenPhoto)} 
-              style={styles.fullScreenImage} 
-              contentFit="contain"
-            />
-          )}
-
-          <View style={styles.modalBottomBar}>
-            {!isViewingHidden && (
-              <>
-                <TouchableOpacity style={styles.modalAction} onPress={() => sharePhoto(fullScreenPhoto)}>
-                  <Ionicons name="share-outline" size={28} color="#FFF" />
-                  <Text style={styles.modalActionText}>Share</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.modalAction} onPress={() => saveToGallery(fullScreenPhoto)}>
-                  <Ionicons name="download-outline" size={28} color="#FFF" />
-                  <Text style={styles.modalActionText}>Save</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            <TouchableOpacity style={styles.modalAction} onPress={() => toggleFavorite(fullScreenPhoto.id)}>
-              <Ionicons name={fullScreenPhoto?.isFavorite ? "heart" : "heart-outline"} size={28} color={fullScreenPhoto?.isFavorite ? "#FF2D55" : "#FFF"} />
-              <Text style={styles.modalActionText}>Favorite</Text>
+      {/* Filters */}
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          {PRIORITIES.map(p => (
+            <TouchableOpacity 
+              key={p}
+              style={[
+                styles.filterChip, 
+                { 
+                  backgroundColor: selectedFilter === p ? theme.tint : theme.background,
+                  borderColor: selectedFilter === p ? theme.tint : '#E5E7EB'
+                }
+              ]}
+              onPress={() => setSelectedFilter(p)}
+            >
+              <Text style={[
+                styles.filterChipText, 
+                { color: selectedFilter === p ? '#fff' : '#6B7280' }
+              ]}>
+                {p}
+              </Text>
             </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-            <TouchableOpacity style={styles.modalAction} onPress={() => toggleHidden(fullScreenPhoto.id)}>
-              <Ionicons name={fullScreenPhoto?.isHidden ? "eye-outline" : "eye-off-outline"} size={28} color="#FFF" />
-              <Text style={styles.modalActionText}>{fullScreenPhoto?.isHidden ? 'Unhide' : 'Hide'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.modalAction} onPress={() => deleteSinglePhoto(fullScreenPhoto.id)}>
-              <Ionicons name="trash-outline" size={28} color="#FF3B30" />
-              <Text style={[styles.modalActionText, { color: '#FF3B30' }]}>Delete</Text>
-            </TouchableOpacity>
+      {/* List */}
+      <FlatList
+        data={filteredSurveys}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={loadHistory} tintColor={theme.tint} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>No Surveys Found</Text>
+            <Text style={styles.emptyText}>
+              {surveys.length === 0 ? "You haven't submitted any surveys yet." : "No surveys match your current search filters."}
+            </Text>
           </View>
-        </View>
-      </Modal>
+        }
+      />
 
-      {/* Password Prompt Modal */}
-      <Modal visible={showPasswordPrompt} transparent={true} animationType="fade">
-        <View style={styles.passwordModalOverlay}>
-          <View style={styles.passwordModal}>
-            <Text style={styles.passwordTitle}>Hidden Photos</Text>
-            <Text style={styles.passwordSubtitle}>Enter passcode to view</Text>
-            <TextInput
-              style={styles.passwordInput}
-              secureTextEntry
-              keyboardType="number-pad"
-              autoFocus
-              value={passwordInput}
-              onChangeText={setPasswordInput}
-              maxLength={4}
-            />
-            <View style={styles.passwordActions}>
-              <TouchableOpacity onPress={() => setShowPasswordPrompt(false)}>
-                <Text style={styles.passwordCancelBtn}>Cancel</Text>
+      {/* Details Modal */}
+      <Modal
+        visible={!!selectedSurvey}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedSurvey(null)}
+      >
+        {selectedSurvey && (
+          <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSelectedSurvey(null)} style={styles.modalCloseBtn}>
+                <Ionicons name="chevron-down" size={28} color={theme.text} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handlePasswordSubmit}>
-                <Text style={styles.passwordSubmitBtn}>Enter</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Survey Details</Text>
+              <TouchableOpacity onPress={() => deleteSurvey(selectedSurvey.id)} style={styles.modalDeleteBtn}>
+                <Ionicons name="trash-outline" size={24} color="#EF4444" />
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
 
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {/* Using similar UI as Preview for consistency */}
+              <View style={styles.previewHero}>
+                {selectedSurvey.photoUri ? (
+                  <Image source={{ uri: selectedSurvey.photoUri }} style={styles.previewImage} />
+                ) : (
+                  <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.tint + '20' }]}>
+                    <Ionicons name="image-outline" size={64} color={theme.tint} />
+                    <Text style={{ color: theme.tint, marginTop: 10, fontWeight: '600' }}>No Photo Attached</Text>
+                  </View>
+                )}
+                <View style={styles.previewOverlay}>
+                  <View style={[styles.previewBadge, { backgroundColor: getPriorityColor(selectedSurvey.priority) }]}>
+                    <Text style={styles.previewBadgeText}>{selectedSurvey.priority} Priority</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.previewContent}>
+                <View style={styles.previewHeader}>
+                  <Text style={[styles.previewSiteName, { color: theme.text }]}>{selectedSurvey.siteName}</Text>
+                  <TouchableOpacity style={styles.previewIdRow} onPress={() => copyToClipboard(selectedSurvey.id, 'Survey ID')}>
+                    <Text style={styles.previewIdText}>ID: {selectedSurvey.id}</Text>
+                    <Ionicons name="copy-outline" size={14} color="#6B7280" />
+                  </TouchableOpacity>
+                  <Text style={styles.previewDate}>📅 Date: {selectedSurvey.dateString}</Text>
+                </View>
+
+                {/* Client Card */}
+                <View style={[styles.previewCard, { backgroundColor: 'rgba(0,0,0,0.02)', borderColor: 'rgba(0,0,0,0.05)' }]}>
+                  <View style={styles.cardHeaderModal}>
+                    <Ionicons name="person-circle-outline" size={24} color={theme.tint} />
+                    <Text style={[styles.cardTitleModal, { color: theme.text }]}>Client Information</Text>
+                  </View>
+                  <Text style={[styles.cardTextModal, { color: theme.text }]}>{selectedSurvey.clientName}</Text>
+                  {selectedSurvey.clientContact ? (
+                    <TouchableOpacity style={styles.copyRow} onPress={() => copyToClipboard(selectedSurvey.clientContact, 'Contact Number')}>
+                      <Ionicons name="call-outline" size={16} color="#6B7280" />
+                      <Text style={styles.cardSubtextModal}>{selectedSurvey.clientContact}</Text>
+                      <Ionicons name="copy-outline" size={14} color="#6B7280" />
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.cardSubtextModal, { fontStyle: 'italic' }]}>No contact provided</Text>
+                  )}
+                </View>
+
+                {/* Location Card */}
+                <View style={[styles.previewCard, { backgroundColor: 'rgba(0,0,0,0.02)', borderColor: 'rgba(0,0,0,0.05)' }]}>
+                  <View style={styles.cardHeaderModal}>
+                    <Ionicons name="location-outline" size={24} color="#4CAF50" />
+                    <Text style={[styles.cardTitleModal, { color: theme.text }]}>Site Location</Text>
+                  </View>
+                  {selectedSurvey.locationCoords ? (
+                    <TouchableOpacity style={styles.copyRow} onPress={() => copyToClipboard(`${selectedSurvey.locationCoords.lat}, ${selectedSurvey.locationCoords.lng}`, 'Coordinates')}>
+                      <Text style={[styles.cardTextModal, { color: theme.text }]}>
+                        Lat: {selectedSurvey.locationCoords.lat}, Lng: {selectedSurvey.locationCoords.lng}
+                      </Text>
+                      <Ionicons name="copy-outline" size={16} color="#6B7280" />
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.cardSubtextModal, { fontStyle: 'italic' }]}>No location attached</Text>
+                  )}
+                </View>
+
+                {/* Notes Card */}
+                <View style={[styles.previewCard, { backgroundColor: 'rgba(0,0,0,0.02)', borderColor: 'rgba(0,0,0,0.05)' }]}>
+                  <View style={styles.cardHeaderModal}>
+                    <Ionicons name="document-text-outline" size={24} color="#FF9800" />
+                    <Text style={[styles.cardTitleModal, { color: theme.text }]}>Survey Notes</Text>
+                  </View>
+                  <Text style={[styles.cardTextModal, { color: theme.text, lineHeight: 22 }]}>{selectedSurvey.description}</Text>
+                </View>
+                
+                <View style={{ height: 40 }} />
+              </View>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -440,159 +313,267 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingHorizontal: 24,
+    paddingTop: 16,
     paddingBottom: 16,
   },
   headerTitle: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '800',
-    color: '#111',
-    letterSpacing: -0.5,
   },
-  headerSubtitle: {
+  searchContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+  },
+  filterContainer: {
+    marginBottom: 16,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontWeight: '600',
     fontSize: 14,
-    color: '#666',
-    marginTop: 4,
   },
-  headerActions: {
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  historyCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingRight: 30, // space for delete button
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  priorityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  priorityText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
-  actionBtn: {
-    padding: 4,
-  },
-  doneText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  masonryContainer: {
+  footerItem: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: 6,
   },
-  column: {
-    flex: 1,
-    gap: 12,
+  footerText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
   },
-  imageWrapper: {
-    width: '100%',
-    position: 'relative',
-  },
-  image: {
-    width: '100%',
-    borderRadius: 16,
-    backgroundColor: '#EAEAEA',
-  },
-  checkbox: {
+  deleteBtn: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 12,
-    overflow: 'hidden'
+    top: 16,
+    right: 16,
   },
-  heartBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 12,
-    padding: 4,
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
   },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#4B5563',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  
   // Modal Styles
   modalContainer: {
     flex: 1,
-    backgroundColor: '#000',
   },
-  closeButton: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    zIndex: 10,
-    padding: 10,
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
-  fullScreenImage: {
-    flex: 1,
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  modalDeleteBtn: {
+    padding: 4,
+  },
+  previewHero: {
+    height: 250,
+    width: '100%',
+    position: 'relative',
+  },
+  previewImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
-  modalBottomBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 20,
-    paddingBottom: 40,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    position: 'absolute',
-    bottom: 0,
+  previewImagePlaceholder: {
     width: '100%',
-  },
-  modalAction: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  modalActionText: {
-    color: '#FFF',
-    fontSize: 12,
-  },
-  // Password prompt styles
-  passwordModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  passwordModal: {
-    backgroundColor: '#FFF',
-    padding: 24,
-    borderRadius: 16,
-    width: '80%',
-    alignItems: 'center',
+  previewOverlay: {
+    position: 'absolute',
+    bottom: -15,
+    right: 20,
+    zIndex: 10,
   },
-  passwordTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+  previewBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  previewBadgeText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 12,
+    textTransform: 'uppercase',
+  },
+  previewContent: {
+    padding: 24,
+  },
+  previewHeader: {
+    marginBottom: 24,
+    marginTop: 10,
+  },
+  previewSiteName: {
+    fontSize: 28,
+    fontWeight: '900',
     marginBottom: 8,
   },
-  passwordSubtitle: {
-    color: '#666',
-    marginBottom: 20,
-  },
-  passwordInput: {
-    borderWidth: 1,
-    borderColor: '#CCC',
-    borderRadius: 8,
-    width: '100%',
-    padding: 12,
-    fontSize: 24,
-    textAlign: 'center',
-    letterSpacing: 8,
-    marginBottom: 24,
-  },
-  passwordActions: {
+  previewIdRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
+    alignItems: 'center',
+    marginBottom: 4,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  passwordCancelBtn: {
-    color: '#FF3B30',
-    fontSize: 16,
-    fontWeight: '600',
+  previewIdText: {
+    color: '#6B7280',
+    fontWeight: '700',
+    marginRight: 6,
+    fontSize: 12,
   },
-  passwordSubmitBtn: {
-    color: '#007AFF',
-    fontSize: 16,
+  previewDate: {
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '600',
-  }
+    marginTop: 4,
+  },
+  previewCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+  },
+  cardHeaderModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitleModal: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+  cardTextModal: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  cardSubtextModal: {
+    color: '#6B7280',
+    fontSize: 14,
+  },
+  copyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 8,
+    alignSelf: 'flex-start'
+  },
 });

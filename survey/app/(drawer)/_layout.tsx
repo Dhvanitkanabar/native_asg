@@ -66,6 +66,7 @@ export default function DrawerLayout() {
             drawerLabel: 'Clipboard',
             title: 'Clipboard',
             drawerIcon: ({ color }) => <Ionicons name="clipboard-outline" size={24} color={color} />,
+            headerLeft: () => <BackButton />,
           }}
         />
         <Drawer.Screen

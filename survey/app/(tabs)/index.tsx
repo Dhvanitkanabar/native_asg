@@ -16,7 +16,7 @@ export default function DashboardScreen() {
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Smart Survey</Text>
         </View>
-        <Image source={require('../../assets/images/avatar.jpeg')} style={styles.avatar} />
+        <Image source={require('@/assets/images/avatar.jpeg')} style={styles.avatar} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>

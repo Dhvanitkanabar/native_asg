@@ -68,13 +68,13 @@ export default function DashboardScreen() {
             </View>
             <Text style={[styles.actionText, { color: theme.text }]}>New Survey</Text>
           </Pressable>
-          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]}>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(tabs)/camera')}>
             <View style={[styles.actionIconWrapper, { backgroundColor: '#2196F315' }]}>
               <MaterialIcons name="camera-alt" size={28} color="#2196F3" />
             </View>
             <Text style={[styles.actionText, { color: theme.text }]}>Take Photo</Text>
           </Pressable>
-          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]}>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(tabs)/history')}>
             <View style={[styles.actionIconWrapper, { backgroundColor: '#FF980015' }]}>
               <MaterialIcons name="history" size={28} color="#FF9800" />
             </View>

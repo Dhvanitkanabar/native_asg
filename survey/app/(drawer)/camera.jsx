@@ -330,7 +330,7 @@ export default function CameraScreen() {
 
           {/* Bottom Controls Bar */}
           <View style={styles.bottomControls}>
-            <TouchableOpacity style={styles.sideButton} onPress={() => router.push('/(tabs)/history')}>
+            <TouchableOpacity style={styles.sideButton} onPress={() => router.push('/(drawer)/(tabs)/history')}>
               {/* Future feature: Gallery preview */}
               <MaterialIcons name="photo-library" size={28} color="#fff" />
             </TouchableOpacity>

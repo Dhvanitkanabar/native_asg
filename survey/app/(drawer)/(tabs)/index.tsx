@@ -12,7 +12,7 @@ export default function DashboardScreen() {
   const router = useRouter();
 
   const handleNewSurvey = () => {
-    router.push('/(tabs)/survey');
+    router.push('/(drawer)/survey');
   };
 
   return (
@@ -68,17 +68,29 @@ export default function DashboardScreen() {
             </View>
             <Text style={[styles.actionText, { color: theme.text }]}>New Survey</Text>
           </Pressable>
-          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(tabs)/camera')}>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(drawer)/camera')}>
             <View style={[styles.actionIconWrapper, { backgroundColor: '#2196F315' }]}>
               <MaterialIcons name="camera-alt" size={28} color="#2196F3" />
             </View>
             <Text style={[styles.actionText, { color: theme.text }]}>Take Photo</Text>
           </Pressable>
-          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(tabs)/history')}>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(drawer)/(tabs)/history')}>
             <View style={[styles.actionIconWrapper, { backgroundColor: '#FF980015' }]}>
               <MaterialIcons name="history" size={28} color="#FF9800" />
             </View>
             <Text style={[styles.actionText, { color: theme.text }]}>History</Text>
+          </Pressable>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(drawer)/location')}>
+            <View style={[styles.actionIconWrapper, { backgroundColor: '#9C27B015' }]}>
+              <MaterialIcons name="my-location" size={28} color="#9C27B0" />
+            </View>
+            <Text style={[styles.actionText, { color: theme.text }]}>Location</Text>
+          </Pressable>
+          <Pressable style={[styles.actionCard, { backgroundColor: theme.background, shadowColor: theme.text }]} onPress={() => router.push('/(drawer)/contacts')}>
+            <View style={[styles.actionIconWrapper, { backgroundColor: '#E91E6315' }]}>
+              <MaterialIcons name="contacts" size={28} color="#E91E63" />
+            </View>
+            <Text style={[styles.actionText, { color: theme.text }]}>Contacts</Text>
           </Pressable>
         </View>
 
@@ -238,12 +250,13 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
     marginBottom: 32,
     gap: 12,
   },
   actionCard: {
-    flex: 1,
+    width: '30%',
     alignItems: 'center',
     paddingVertical: 16,
     borderRadius: 16,

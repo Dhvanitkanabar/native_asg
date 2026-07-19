@@ -15,18 +15,31 @@ import {
   Platform,
   Share
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Contacts from "expo-contacts";
 import * as Clipboard from "expo-clipboard";
 import { Swipeable } from "react-native-gesture-handler";
 import sectionListGetItemLayout from 'react-native-section-list-get-item-layout';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { 
+  Users, User, Plus, Search, Mail, Phone, Trash2, Star, 
+  X, ChevronRight, Copy, MessageSquare, ExternalLink, RefreshCw 
+} from 'lucide-react-native';
+import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppCard } from '@/components/ui/AppCard';
+import { AppButton } from '@/components/ui/AppButton';
+import { AppInput } from '@/components/ui/AppInput';
+import * as Haptics from 'expo-haptics';
 
 const TAGS = ["All", "Work", "Family", "Friends", "Other"];
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
-const ITEM_HEIGHT = 68;
-const HEADER_HEIGHT = 32;
+const ITEM_HEIGHT = 74;
+const HEADER_HEIGHT = 36;
 
 const ContactScreen = () => {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [search, setSearch] = useState("");
@@ -55,7 +68,6 @@ const ContactScreen = () => {
       fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Image, Contacts.Fields.Emails],
     });
 
-    // Modified to not filter out those without phones, to show 'No Number' as requested
     const allContacts = data.filter(c => c.name);
     allContacts.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     setContacts(allContacts);
@@ -68,10 +80,10 @@ const ContactScreen = () => {
   useEffect(() => {
     let result = contacts;
     if (search.trim() !== "") {
-      result = result.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()));
+      result = result.filter((c) => c.name?.toLowerCase().includes(search.toLowerCase()));
     }
     if (activeFilterTag !== "All") {
-      result = result.filter(c => contactTags[c.id] === activeFilterTag);
+      result = result.filter((c) => contactTags[c.id] === activeFilterTag);
     }
     setFilteredContacts(result);
   }, [search, activeFilterTag, contacts, contactTags]);
@@ -98,297 +110,366 @@ const ContactScreen = () => {
 
       let savedId = editingContactId;
       if (editingContactId) {
-        contact.id = editingContactId;
-        await Contacts.updateContactAsync(contact);
+        // Edit existing contact logic
+        setContacts(prev => prev.map((c) => c.id === editingContactId ? { ...c, name: contactForm.name, phoneNumbers: validPhones.map(p => ({ number: p })), emails: contactForm.email ? [{ email: contactForm.email }] : [] } : c));
+        Alert.alert("Success", "Contact updated successfully!");
       } else {
-        savedId = await Contacts.addContactAsync(contact);
+        // Add new contact logic
+        const newId = `local-${Date.now()}`;
+        savedId = newId;
+        const newContactObj = {
+          id: newId,
+          name: contactForm.name,
+          phoneNumbers: validPhones.map(p => ({ number: p })),
+          emails: contactForm.email ? [{ email: contactForm.email }] : []
+        };
+        setContacts(prev => [newContactObj, ...prev]);
+        Alert.alert("Success", "Contact added successfully!");
       }
 
-      if (savedId) setContactTags(prev => ({ ...prev, [savedId]: contactForm.tag }));
-
+      setContactTags((prev) => ({ ...prev, [savedId]: contactForm.tag }));
       setModalVisible(false);
-      setContactForm({ name: "", phones: [""], email: "", tag: "Other" });
       setEditingContactId(null);
-      getContacts();
-    } catch (error) { Alert.alert("Error", "Failed to save contact."); }
+      setContactForm({ name: "", phones: [""], email: "", tag: "Other" });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert("Error", "Failed to save contact.");
+    }
   };
 
-  const confirmDeleteContact = (id) => {
+  const deleteContact = (id) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert("Delete Contact", "Are you sure you want to delete this contact?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => handleDeleteContact(id) }
+      { text: "Delete", style: "destructive", onPress: () => {
+        setContacts(prev => prev.filter((c) => c.id !== id));
+        if (selectedProfile?.id === id) setProfileModalVisible(false);
+      }}
     ]);
   };
 
-  const handleDeleteContact = async (id) => {
-    try {
-      await Contacts.removeContactAsync(id);
-      setFavorites(favorites.filter(favId => favId !== id));
-      getContacts();
-    } catch (error) { Alert.alert("Error", "Failed to delete contact."); }
-  };
-
-  const openEditModal = (contact) => {
-    const phones = contact.phoneNumbers?.map(p => p.number) || [""];
-    setContactForm({
-      name: contact.name || "",
-      phones: phones.length > 0 ? phones : [""],
-      email: contact.emails?.[0]?.email || "",
-      tag: contactTags[contact.id] || "Other",
-    });
-    setEditingContactId(contact.id);
-    setModalVisible(true);
-  };
-
-  const scrollToSection = (letter) => {
-    let index = sections.findIndex(s => s.title === letter);
-    if (index === -1) {
-      for (let i = 0; i < sections.length; i++) {
-        if (sections[i].title.length === 1 && sections[i].title > letter) { index = i; break; }
-      }
-    }
-    if (index === -1 && sections.length > 0) index = sections.length - 1;
-
-    if (index !== -1 && sectionListRef.current) {
-      sectionListRef.current.scrollToLocation({ sectionIndex: index, itemIndex: 0, animated: true });
-    }
-  };
-
-  const updatePhone = (text, index) => {
-    const newPhones = [...contactForm.phones];
-    newPhones[index] = text;
-    setContactForm({ ...contactForm, phones: newPhones });
-  };
-  const addPhoneField = () => setContactForm({ ...contactForm, phones: [...contactForm.phones, ""] });
-  const removePhoneField = (index) => {
-    const newPhones = contactForm.phones.filter((_, i) => i !== index);
-    setContactForm({ ...contactForm, phones: newPhones.length > 0 ? newPhones : [""] });
-  };
-
-  const getInitials = (name) => {
-    if (!name) return "?";
-    const parts = name.trim().split(" ");
-    if (parts.length > 1) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    return name[0].toUpperCase();
-  };
-
   const toggleFavorite = (id) => {
-    if (favorites.includes(id)) setFavorites(favorites.filter(favId => favId !== id));
-    else setFavorites([...favorites, id]);
-  };
-
-  const copyToClipboard = async (text) => {
-    if (!text || text === "No Number") return;
-    await Clipboard.setStringAsync(text);
-    Alert.alert("Copied! 📋", "Number copied to clipboard");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setFavorites(prev => 
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    );
   };
 
   const shareContact = async (contact) => {
-    const phone = contact.phoneNumbers?.[0]?.number || "No number";
-    const email = contact.emails?.[0]?.email || "No email";
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
+      const num = contact.phoneNumbers?.[0]?.number || "No number";
       await Share.share({
-        message: `Contact Info\nName: ${contact.name}\nPhone: ${phone}\nEmail: ${email}`,
+        message: `Contact: ${contact.name}\nPhone: ${num}`,
       });
     } catch (error) {
-      Alert.alert("Error", "Could not share contact");
+      Alert.alert("Error", "Could not share contact.");
     }
   };
 
+  const copyToClipboard = async (text) => {
+    if (text) {
+      await Clipboard.setStringAsync(text);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Copied", "Copied to clipboard!");
+    }
+  };
+
+  // Group contacts by alphabet
   const sections = useMemo(() => {
-    const sectionsArr = [];
-    const favs = filteredContacts.filter(c => favorites.includes(c.id));
-    if (favs.length > 0) sectionsArr.push({ title: '⭐ Favorites', data: favs });
-    
-    const nonFavs = filteredContacts.filter(c => !favorites.includes(c.id));
-    const grouped = nonFavs.reduce((acc, contact) => {
-      const firstLetter = (contact.name || "?")[0].toUpperCase();
-      const key = /[A-Z]/.test(firstLetter) ? firstLetter : "#";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(contact);
-      return acc;
-    }, {});
-    
-    Object.keys(grouped).sort().forEach(key => sectionsArr.push({ title: key, data: grouped[key] }));
-    return sectionsArr;
-  }, [filteredContacts, favorites]);
+    const map = {};
+    filteredContacts.forEach((c) => {
+      const firstChar = c.name?.charAt(0).toUpperCase() || "#";
+      const key = /[A-Z]/.test(firstChar) ? firstChar : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(c);
+    });
+
+    return Object.keys(map)
+      .sort((a, b) => {
+        if (a === "#") return 1;
+        if (b === "#") return -1;
+        return a.localeCompare(b);
+      })
+      .map(key => ({ title: key, data: map[key] }));
+  }, [filteredContacts]);
+
+  const getInitials = (n) => {
+    if (!n) return "";
+    const parts = n.trim().split(" ");
+    if (parts.length > 1) {
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    return n.charAt(0).toUpperCase();
+  };
+
+  const scrollToIndex = (letter) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const sectionIndex = sections.findIndex(s => s.title === letter);
+    if (sectionIndex !== -1 && sectionListRef.current) {
+      sectionListRef.current.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        viewPosition: 0,
+        animated: true
+      });
+    }
+  };
 
   const getItemLayout = sectionListGetItemLayout({
-    getItemHeight: () => ITEM_HEIGHT, 
-    getSectionHeaderHeight: () => HEADER_HEIGHT, 
-    getSectionFooterHeight: () => 0, 
+    getItemHeight: () => ITEM_HEIGHT,
+    getSectionHeaderHeight: () => HEADER_HEIGHT,
   });
 
-  const renderRightActions = (item) => (
-    <View style={styles.swipeActionsContainer}>
-      <TouchableOpacity style={[styles.swipeBtn, styles.editSwipeBtn]} onPress={() => openEditModal(item)}>
-        <Text style={styles.swipeBtnText}>Edit</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.swipeBtn, styles.deleteSwipeBtn]} onPress={() => confirmDeleteContact(item.id)}>
-        <Text style={styles.swipeBtnText}>Delete</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const renderSwipeableItem = (item) => {
+    const num = item.phoneNumbers?.[0]?.number;
+    const initialName = getInitials(item.name);
+    const tag = contactTags[item.id] || "Other";
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.heading}>Contacts</Text>
-          <Text style={styles.counterText}>{filteredContacts.length} {filteredContacts.length === 1 ? 'Contact' : 'Contacts'}</Text>
-        </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => {
-          setContactForm({ name: "", phones: [""], email: "", tag: "Other" });
-          setEditingContactId(null);
-          setModalVisible(true);
-        }}>
-          <Text style={styles.addBtnText}>+ New</Text>
+    return (
+      <View style={[styles.cardWrapper, { backgroundColor: theme.background }]}>
+        <TouchableOpacity 
+          style={[styles.card, { borderBottomColor: theme.borderLight }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setSelectedProfile(item);
+            setProfileModalVisible(true);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatarContainer}>
+            {item.imageAvailable && item.image?.uri ? (
+              <Image source={{ uri: item.image.uri }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: favorites.includes(item.id) ? theme.warning + '20' : theme.primary + '20' }]}>
+                <Text style={[styles.avatarText, { color: favorites.includes(item.id) ? theme.warning : theme.primary, fontFamily: Typography.fontFamily.bold }]}>{initialName}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.contactInfo}>
+            <Text style={[styles.name, { color: theme.text, fontFamily: Typography.fontFamily.bold }]} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.subInfoRow}>
+              <Text style={[styles.number, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{num || "No Phone Number"}</Text>
+              {tag !== "Other" && (
+                <View style={[styles.smallTag, { backgroundColor: theme.primary + '12' }]}>
+                  <Text style={[styles.smallTagText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>{tag}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          {favorites.includes(item.id) && (
+            <Star size={16} color={theme.warning} fill={theme.warning} style={{ marginRight: Spacing.md }} />
+          )}
+          <ChevronRight size={18} color={theme.textTertiary} />
         </TouchableOpacity>
       </View>
+    );
+  };
 
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={[styles.heading, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>Contacts</Text>
+          <Text style={[styles.counterText, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{contacts.length} total entries</Text>
+        </View>
+        <AppButton 
+          title="Add" 
+          onPress={() => {
+            setEditingContactId(null);
+            setContactForm({ name: "", phones: [""], email: "", tag: "Other" });
+            setModalVisible(true);
+          }} 
+          style={styles.addBtn}
+          icon={<Plus size={16} color="#fff" />}
+        />
+      </View>
+
+      {/* Search Input */}
       <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput style={styles.searchInput} placeholder="Search Names..." placeholderTextColor="#9CA3AF" value={search} onChangeText={setSearch} />
+        <View style={[styles.searchBox, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1.5 }]}>
+          <Search size={18} color={theme.textTertiary} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.text, fontFamily: Typography.fontFamily.medium }]}
+            placeholder="Search contact name..."
+            placeholderTextColor={theme.textTertiary}
+            value={search}
+            onChangeText={setSearch}
+          />
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagFiltersContainer}>
-        {TAGS.map(tag => (
-          <TouchableOpacity key={tag} style={[styles.tagFilterChip, activeFilterTag === tag && styles.tagFilterChipActive]} onPress={() => setActiveFilterTag(tag)}>
-            <Text style={[styles.tagFilterText, activeFilterTag === tag && styles.tagFilterTextActive]}>{tag}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Tag Filters */}
+      <View style={styles.tagFiltersContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {TAGS.map(t => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                styles.tagFilterChip,
+                { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 },
+                activeFilterTag === t && { backgroundColor: theme.primary, borderColor: theme.primary }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveFilterTag(t);
+              }}
+            >
+              <Text style={[
+                styles.tagFilterText,
+                { fontFamily: Typography.fontFamily.bold },
+                activeFilterTag === t ? { color: '#fff' } : { color: theme.textSecondary }
+              ]}>{t}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
+      {/* Contact Section List */}
       <View style={styles.listContainer}>
         <SectionList
           ref={sectionListRef}
           sections={sections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => item.id + index}
+          renderItem={({ item }) => renderSwipeableItem(item)}
           getItemLayout={getItemLayout}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <MaterialIcons name="person-search" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyStateText}>No Contacts Found</Text>
-              <Text style={styles.emptyStateSub}>Try adjusting your search or filters.</Text>
-            </View>
-          }
           renderSectionHeader={({ section: { title } }) => (
-            <View style={styles.sectionHeaderContainer}>
-              <Text style={styles.sectionHeader}>{title}</Text>
+            <View style={[styles.sectionHeaderContainer, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+              <Text style={[styles.sectionHeader, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>{title}</Text>
             </View>
           )}
-          renderItem={({ item }) => {
-            const primaryPhone = item.phoneNumbers?.[0]?.number || "No Number";
-            const tag = contactTags[item.id];
-            const isFav = favorites.includes(item.id);
-
-            return (
-              <View style={styles.cardWrapper}>
-                <Swipeable renderRightActions={() => renderRightActions(item)}>
-                  <TouchableOpacity activeOpacity={0.7} onPress={() => { setSelectedProfile(item); setProfileModalVisible(true); }}>
-                    <View style={styles.card}>
-                      <View style={styles.avatarContainer}>
-                        {item.imageAvailable && item.image?.uri ? (
-                          <Image source={{ uri: item.image.uri }} style={styles.avatar} />
-                        ) : (
-                          <View style={[styles.avatarPlaceholder, { backgroundColor: isFav ? "#F59E0B" : "#8B5CF6" }]}>
-                            <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
-                          </View>
-                        )}
-                      </View>
-                      
-                      <View style={styles.contactInfo}>
-                        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                        <View style={styles.subInfoRow}>
-                          <Text style={[styles.number, primaryPhone === "No Number" && { fontStyle: 'italic', color: '#9CA3AF' }]} numberOfLines={1}>
-                            {primaryPhone}
-                          </Text>
-                          {tag && <View style={styles.smallTag}><Text style={styles.smallTagText}>{tag}</Text></View>}
-                        </View>
-                      </View>
-                      
-                      <TouchableOpacity onPress={() => copyToClipboard(primaryPhone)} style={styles.actionIconButton}>
-                        <Ionicons name="copy-outline" size={20} color="#9CA3AF" />
-                      </TouchableOpacity>
-
-                      <TouchableOpacity onPress={() => toggleFavorite(item.id)} style={styles.actionIconButton}>
-                        <Text style={[styles.iconText, isFav && { color: "#F59E0B" }]}>{isFav ? "★" : "☆"}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                </Swipeable>
-              </View>
-            );
-          }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Users size={48} color={theme.border} />
+              <Text style={[styles.emptyStateText, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>No Contacts Found</Text>
+              <Text style={[styles.emptyStateSub, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>Try checking permissions or reloading the list.</Text>
+            </View>
+          }
         />
 
-        <View style={styles.alphabetIndexWrapper}>
-          <View style={styles.alphabetIndex}>
-            {ALPHABET.map(letter => (
-              <TouchableOpacity key={letter} onPress={() => scrollToSection(letter)} hitSlop={{top: 2, bottom: 2, left: 10, right: 10}}>
-                <Text style={styles.alphabetText}>{letter}</Text>
-              </TouchableOpacity>
-            ))}
+        {/* Alphabet Sidebar */}
+        {filteredContacts.length > 5 && (
+          <View style={styles.alphabetIndexWrapper}>
+            <ScrollView contentContainerStyle={styles.alphabetIndex} showsVerticalScrollIndicator={false}>
+              {ALPHABET.map((char) => (
+                <TouchableOpacity key={char} onPress={() => scrollToIndex(char)}>
+                  <Text style={[styles.alphabetText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>{char}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        </View>
+        )}
       </View>
 
-      {/* Forms and Modals */}
-      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+      {/* ====== Add/Edit Form Modal ====== */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{editingContactId ? "Edit Contact" : "New Contact"}</Text>
-            
-            <ScrollView style={styles.modalScroll}>
-              <Text style={styles.label}>Name</Text>
-              <TextInput style={styles.input} placeholder="Full Name" value={contactForm.name} onChangeText={(text) => setContactForm({ ...contactForm, name: text })} />
+          <AppCard variant="glass" style={styles.modalContent}>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalTitle, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>
+                {editingContactId ? "Edit Contact" : "New Contact"}
+              </Text>
+              
+              <AppInput
+                label="Full Name"
+                placeholder="John Doe"
+                value={contactForm.name}
+                onChangeText={text => setContactForm({ ...contactForm, name: text })}
+              />
 
-              <Text style={styles.label}>Email</Text>
-              <TextInput style={styles.input} placeholder="Email Address" keyboardType="email-address" autoCapitalize="none" value={contactForm.email} onChangeText={(text) => setContactForm({ ...contactForm, email: text })} />
+              <AppInput
+                label="Email Address"
+                placeholder="john@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={contactForm.email}
+                onChangeText={text => setContactForm({ ...contactForm, email: text })}
+              />
 
-              <Text style={styles.label}>Tag</Text>
-              <View style={styles.tagSelector}>
-                {["Work", "Family", "Friends", "Other"].map(tag => (
-                  <TouchableOpacity key={tag} style={[styles.tagBtn, contactForm.tag === tag && styles.tagBtnActive]} onPress={() => setContactForm({...contactForm, tag})}>
-                    <Text style={[styles.tagBtnText, contactForm.tag === tag && styles.tagBtnTextActive]}>{tag}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.label}>Phone Numbers</Text>
+              <Text style={[styles.label, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Phone Number</Text>
               {contactForm.phones.map((phone, index) => (
                 <View key={index} style={styles.phoneRow}>
-                  <TextInput style={[styles.input, styles.phoneInput]} placeholder="Phone Number" keyboardType="phone-pad" value={phone} onChangeText={(text) => updatePhone(text, index)} />
+                  <AppInput
+                    placeholder="Enter phone number"
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={text => {
+                      const updated = [...contactForm.phones];
+                      updated[index] = text;
+                      setContactForm({ ...contactForm, phones: updated });
+                    }}
+                    containerStyle={{ flex: 1, marginBottom: 0 }}
+                  />
                   {contactForm.phones.length > 1 && (
-                    <TouchableOpacity onPress={() => removePhoneField(index)} style={styles.removePhoneBtn}>
-                      <Text style={styles.removePhoneText}>✕</Text>
+                    <TouchableOpacity 
+                      style={styles.removePhoneBtn} 
+                      onPress={() => {
+                        const updated = contactForm.phones.filter((_, i) => i !== index);
+                        setContactForm({ ...contactForm, phones: updated });
+                      }}
+                    >
+                      <Trash2 size={16} color={theme.danger} />
                     </TouchableOpacity>
                   )}
                 </View>
               ))}
-              
-              <TouchableOpacity style={styles.addPhoneBtn} onPress={addPhoneField}>
-                <Text style={styles.addPhoneText}>+ Add Phone</Text>
+
+              <TouchableOpacity 
+                style={[styles.addPhoneBtn, { backgroundColor: theme.primary + '08' }]}
+                onPress={() => setContactForm({ ...contactForm, phones: [...contactForm.phones, ""] })}
+              >
+                <Text style={[styles.addPhoneText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>+ Add Phone Field</Text>
               </TouchableOpacity>
+
+              <Text style={[styles.label, { color: theme.text, fontFamily: Typography.fontFamily.bold, marginTop: Spacing.lg }]}>Tag Category</Text>
+              <View style={styles.tagSelector}>
+                {TAGS.slice(1).map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[
+                      styles.tagBtn,
+                      { backgroundColor: theme.surface },
+                      contactForm.tag === tag && { backgroundColor: theme.primary }
+                    ]}
+                    onPress={() => setContactForm({ ...contactForm, tag })}
+                  >
+                    <Text style={[
+                      styles.tagBtnText,
+                      { fontFamily: Typography.fontFamily.bold },
+                      contactForm.tag === tag ? { color: '#fff' } : { color: theme.textSecondary }
+                    ]}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </ScrollView>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveContact}><Text style={styles.saveBtnText}>Save</Text></TouchableOpacity>
+              <AppButton 
+                title="Cancel" 
+                variant="outline" 
+                onPress={() => setModalVisible(false)} 
+                style={{ flex: 1 }}
+              />
+              <AppButton 
+                title="Save" 
+                onPress={handleSaveContact} 
+                style={{ flex: 1 }}
+              />
             </View>
-          </View>
+          </AppCard>
         </View>
       </Modal>
 
-      <Modal animationType="fade" transparent={true} visible={profileModalVisible} onRequestClose={() => setProfileModalVisible(false)}>
+      {/* ====== Contact Info Card Modal ====== */}
+      <Modal visible={profileModalVisible} animationType="slide" transparent>
         <View style={styles.profileModalContainer}>
-          <View style={styles.profileModalContent}>
-            <TouchableOpacity style={styles.closeProfileBtn} onPress={() => setProfileModalVisible(false)}>
-              <Text style={styles.closeProfileText}>✕</Text>
+          <View style={[styles.profileModalContent, { backgroundColor: theme.background }]}>
+            <TouchableOpacity onPress={() => setProfileModalVisible(false)} style={[styles.closeProfileBtn, { backgroundColor: theme.surface }]}>
+              <X size={20} color={theme.text} />
             </TouchableOpacity>
 
             {selectedProfile && (
@@ -397,57 +478,68 @@ const ContactScreen = () => {
                   {selectedProfile.imageAvailable && selectedProfile.image?.uri ? (
                     <Image source={{ uri: selectedProfile.image.uri }} style={styles.profileAvatar} />
                   ) : (
-                    <View style={[styles.profileAvatarPlaceholder, { backgroundColor: favorites.includes(selectedProfile.id) ? "#F59E0B" : "#8B5CF6" }]}>
-                      <Text style={styles.profileAvatarText}>{getInitials(selectedProfile.name)}</Text>
+                    <View style={[styles.profileAvatarPlaceholder, { backgroundColor: favorites.includes(selectedProfile.id) ? theme.warning : theme.primary }]}>
+                      <Text style={[styles.profileAvatarText, { fontFamily: Typography.fontFamily.black }]}>{getInitials(selectedProfile.name)}</Text>
                     </View>
                   )}
                 </View>
 
-                <Text style={styles.profileName}>{selectedProfile.name}</Text>
-                <View style={styles.profileTagPill}>
-                  <Text style={styles.profileTagText}>{contactTags[selectedProfile.id] || "No Tag"}</Text>
+                <Text style={[styles.profileName, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>{selectedProfile.name}</Text>
+                <View style={[styles.profileTagPill, { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.profileTagText, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>{contactTags[selectedProfile.id] || "No Category"}</Text>
                 </View>
 
+                {/* Actions Grid */}
                 <View style={styles.profileActionRow}>
-                  <TouchableOpacity style={styles.profileActionBtn} onPress={() => Linking.openURL(`tel:${selectedProfile.phoneNumbers?.[0]?.number}`)}>
-                    <Text style={styles.profileActionIcon}>📞</Text>
-                    <Text style={styles.profileActionLabel}>Call</Text>
+                  <TouchableOpacity style={[styles.profileActionBtn, { backgroundColor: theme.surfaceElevated }]} onPress={() => Linking.openURL(`tel:${selectedProfile.phoneNumbers?.[0]?.number}`)}>
+                    <Phone size={18} color={theme.primary} />
+                    <Text style={[styles.profileActionLabel, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Call</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.profileActionBtn} onPress={() => Linking.openURL(`sms:${selectedProfile.phoneNumbers?.[0]?.number}`)}>
-                    <Text style={styles.profileActionIcon}>💬</Text>
-                    <Text style={styles.profileActionLabel}>Text</Text>
+                  <TouchableOpacity style={[styles.profileActionBtn, { backgroundColor: theme.surfaceElevated }]} onPress={() => Linking.openURL(`sms:${selectedProfile.phoneNumbers?.[0]?.number}`)}>
+                    <MessageSquare size={18} color={theme.success} />
+                    <Text style={[styles.profileActionLabel, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Text</Text>
                   </TouchableOpacity>
                   {selectedProfile.emails?.[0]?.email && (
-                    <TouchableOpacity style={styles.profileActionBtn} onPress={() => Linking.openURL(`mailto:${selectedProfile.emails[0].email}`)}>
-                      <Text style={styles.profileActionIcon}>✉️</Text>
-                      <Text style={styles.profileActionLabel}>Email</Text>
+                    <TouchableOpacity style={[styles.profileActionBtn, { backgroundColor: theme.surfaceElevated }]} onPress={() => Linking.openURL(`mailto:${selectedProfile.emails[0].email}`)}>
+                      <Mail size={18} color={theme.accent} />
+                      <Text style={[styles.profileActionLabel, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Email</Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity style={styles.profileActionBtn} onPress={() => shareContact(selectedProfile)}>
-                    <Text style={styles.profileActionIcon}>📤</Text>
-                    <Text style={styles.profileActionLabel}>Share</Text>
+                  <TouchableOpacity style={[styles.profileActionBtn, { backgroundColor: theme.surfaceElevated }]} onPress={() => toggleFavorite(selectedProfile.id)}>
+                    <Star size={18} color={theme.warning} fill={favorites.includes(selectedProfile.id) ? theme.warning : "transparent"} />
+                    <Text style={[styles.profileActionLabel, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Star</Text>
                   </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.profileDetailsScroll} showsVerticalScrollIndicator={false}>
-                  <Text style={styles.profileSectionTitle}>Phone Numbers</Text>
+                  <Text style={[styles.profileSectionTitle, { color: theme.textTertiary, fontFamily: Typography.fontFamily.bold }]}>Phone Numbers</Text>
                   {selectedProfile.phoneNumbers?.map((p, i) => (
-                    <TouchableOpacity key={i} onPress={() => copyToClipboard(p.number)}>
-                      <Text style={styles.profileDetailText}>{p.label ? `${p.label}: ` : ""}{p.number} <Ionicons name="copy-outline" size={14} color="#9CA3AF" /></Text>
+                    <TouchableOpacity key={i} onPress={() => copyToClipboard(p.number)} style={styles.profileDetailRow}>
+                      <Text style={[styles.profileDetailText, { color: theme.text, fontFamily: Typography.fontFamily.medium }]}>
+                        {p.label ? `${p.label}: ` : ""}{p.number}
+                      </Text>
+                      <Copy size={14} color={theme.textTertiary} />
                     </TouchableOpacity>
                   ))}
                   {(!selectedProfile.phoneNumbers || selectedProfile.phoneNumbers.length === 0) && (
-                    <Text style={[styles.profileDetailText, { fontStyle: 'italic', color: '#9CA3AF' }]}>No Number</Text>
+                    <Text style={[styles.profileDetailText, { fontStyle: 'italic', color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>No Numbers Linked</Text>
                   )}
                   
                   {selectedProfile.emails && selectedProfile.emails.length > 0 && (
                     <>
-                      <Text style={styles.profileSectionTitle}>Emails</Text>
+                      <Text style={[styles.profileSectionTitle, { color: theme.textTertiary, fontFamily: Typography.fontFamily.bold }]}>Emails</Text>
                       {selectedProfile.emails.map((e, i) => (
-                        <Text key={i} style={styles.profileDetailText}>{e.email}</Text>
+                        <Text key={i} style={[styles.profileDetailText, { color: theme.text, fontFamily: Typography.fontFamily.medium }]}>{e.email}</Text>
                       ))}
                     </>
                   )}
+                  
+                  <View style={{ height: Spacing.lg }} />
+                  <AppButton 
+                    title="Delete Contact" 
+                    variant="danger" 
+                    onPress={() => deleteContact(selectedProfile.id)} 
+                  />
                 </ScrollView>
               </>
             )}
@@ -455,104 +547,81 @@ const ContactScreen = () => {
         </View>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 };
 
-export default ContactScreen;
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", paddingTop: Platform.OS === 'ios' ? 60 : 40 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, marginBottom: 15 },
-  heading: { fontSize: 32, fontWeight: "800", color: "#000", letterSpacing: -0.5 },
-  counterText: { fontSize: 14, fontWeight: "600", color: "#6B7280", marginTop: 2 },
-  headerButtons: { flexDirection: "row", alignItems: "center" },
-  addBtn: { backgroundColor: "#007AFF", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  addBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  container: { flex: 1 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
+  heading: { fontSize: Typography.fontSize.xxl, letterSpacing: -0.5 },
+  counterText: { fontSize: Typography.fontSize.xs + 1, marginTop: 2 },
+  addBtn: { height: 40, paddingHorizontal: Spacing.lg, borderRadius: Radius.full },
   
-  searchContainer: { paddingHorizontal: 16, marginBottom: 12 },
-  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#F2F2F7", borderRadius: 10, paddingHorizontal: 10 },
-  searchIcon: { fontSize: 16, marginRight: 6, color: "#8E8E93" },
-  searchInput: { flex: 1, paddingVertical: 10, fontSize: 16, color: "#000" },
+  searchContainer: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm },
+  searchBox: { flexDirection: "row", alignItems: "center", borderRadius: Radius.md, paddingHorizontal: Spacing.md },
+  searchIcon: { marginRight: Spacing.xs },
+  searchInput: { flex: 1, paddingVertical: Spacing.sm, fontSize: Typography.fontSize.md },
   
-  tagFiltersContainer: { paddingHorizontal: 16, maxHeight: 40, marginBottom: 10 },
-  tagFilterChip: { backgroundColor: "#F2F2F7", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 16, marginRight: 8, alignSelf: 'flex-start' },
-  tagFilterChipActive: { backgroundColor: "#007AFF" },
-  tagFilterText: { color: "#8E8E93", fontWeight: "600", fontSize: 13 },
-  tagFilterTextActive: { color: "#fff" },
+  tagFiltersContainer: { paddingHorizontal: Spacing.lg, maxHeight: 44, marginBottom: Spacing.sm },
+  tagFilterChip: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: Radius.full, marginRight: Spacing.sm, alignSelf: 'flex-start' },
+  tagFilterText: { fontSize: Typography.fontSize.xs + 1 },
   
   listContainer: { flex: 1 },
-  sectionHeaderContainer: { height: HEADER_HEIGHT, backgroundColor: "#F9FAFB", justifyContent: "center", paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
-  sectionHeader: { fontSize: 14, fontWeight: "700", color: "#6B7280" },
+  sectionHeaderContainer: { height: HEADER_HEIGHT, justifyContent: "center", paddingHorizontal: Spacing.lg, borderBottomWidth: 1 },
+  sectionHeader: { fontSize: Typography.fontSize.xs },
   
-  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  emptyStateText: { fontSize: 18, fontWeight: '700', color: '#4B5563', marginTop: 16 },
-  emptyStateSub: { fontSize: 14, color: '#9CA3AF', marginTop: 8 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 80, gap: Spacing.sm },
+  emptyStateText: { fontSize: Typography.fontSize.md + 1 },
+  emptyStateSub: { fontSize: Typography.fontSize.sm },
 
-  cardWrapper: { height: ITEM_HEIGHT, backgroundColor: "#fff" },
-  card: { height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
-  avatarContainer: { marginRight: 12 },
+  cardWrapper: { height: ITEM_HEIGHT },
+  card: { height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: Spacing.lg, borderBottomWidth: 1 },
+  avatarContainer: { marginRight: Spacing.md },
   avatar: { width: 44, height: 44, borderRadius: 22 },
   avatarPlaceholder: { width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#fff", fontSize: 18, fontWeight: "600" },
+  avatarText: { fontSize: 16 },
   contactInfo: { flex: 1, justifyContent: "center" },
-  name: { fontSize: 17, fontWeight: "600", color: "#000", marginBottom: 2 },
-  subInfoRow: { flexDirection: "row", alignItems: "center" },
-  number: { color: "#6B7280", fontSize: 14, marginRight: 8 },
-  smallTag: { backgroundColor: "#F3F4F6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  smallTagText: { fontSize: 10, color: "#4B5563", fontWeight: "600", textTransform: "uppercase" },
-  actionIconButton: { padding: 8 },
-  iconText: { fontSize: 20, color: "#D1D5DB" },
-  
-  swipeActionsContainer: { flexDirection: "row", width: 150, height: "100%" },
-  swipeBtn: { flex: 1, justifyContent: "center", alignItems: "center" },
-  editSwipeBtn: { backgroundColor: "#007AFF" },
-  deleteSwipeBtn: { backgroundColor: "#FF3B30" },
-  swipeBtnText: { color: "#fff", fontWeight: "600", fontSize: 14 },
+  name: { fontSize: 16, marginBottom: 2 },
+  subInfoRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  number: { fontSize: Typography.fontSize.sm },
+  smallTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.xs },
+  smallTagText: { fontSize: 9, textTransform: "uppercase" },
 
   alphabetIndexWrapper: { position: "absolute", right: 0, top: 0, bottom: 0, justifyContent: "center", paddingRight: 4 },
   alphabetIndex: { alignItems: "center" },
-  alphabetText: { fontSize: 10, fontWeight: "700", color: "#007AFF", marginVertical: 1.5, paddingHorizontal: 4 },
+  alphabetText: { fontSize: 9, marginVertical: 2, paddingHorizontal: 4 },
 
-  modalContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(17,24,39,0.7)" },
-  modalContent: { width: "90%", maxHeight: "85%", backgroundColor: "#fff", padding: 24, borderRadius: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
-  modalScroll: { marginBottom: 20 },
-  modalTitle: { fontSize: 24, fontWeight: "900", color: "#111827", marginBottom: 20, textAlign: "center" },
-  label: { fontWeight: "800", marginBottom: 8, marginTop: 15, color: "#374151", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5 },
-  input: { backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, padding: 14, fontSize: 16, color: "#111827", fontWeight: "500" },
-  tagSelector: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  tagBtn: { backgroundColor: "#F3F4F6", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20 },
-  tagBtnActive: { backgroundColor: "#111827" },
-  tagBtnText: { color: "#4B5563", fontWeight: "700", fontSize: 13 },
-  tagBtnTextActive: { color: "#fff" },
-  phoneRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  phoneInput: { flex: 1, marginBottom: 0 },
-  removePhoneBtn: { marginLeft: 10, backgroundColor: "#FEE2E2", width: 44, height: 44, borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  removePhoneText: { fontWeight: "900", color: "#EF4444", fontSize: 16 },
-  addPhoneBtn: { marginTop: 5, paddingVertical: 12, borderRadius: 12, backgroundColor: "#EFF6FF", alignItems: "center" },
-  addPhoneText: { color: "#3B82F6", fontWeight: "800", fontSize: 14 },
-  modalButtons: { flexDirection: "row", gap: 12 },
-  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center" },
-  cancelBtnText: { color: "#4B5563", fontWeight: "800", fontSize: 15 },
-  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, backgroundColor: "#111827", alignItems: "center" },
-  saveBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  // Add modal
+  modalContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(15,23,42,0.6)" },
+  modalContent: { width: "90%", maxHeight: "85%", padding: Spacing.xl, borderRadius: Radius.xl },
+  modalScroll: { marginBottom: Spacing.lg },
+  modalTitle: { fontSize: Typography.fontSize.xxl, marginBottom: Spacing.lg, textAlign: "center" },
+  label: { fontSize: Typography.fontSize.xs, marginBottom: Spacing.xs, textTransform: "uppercase", letterSpacing: 0.5 },
+  tagSelector: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
+  tagBtn: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.full },
+  phoneRow: { flexDirection: "row", alignItems: "center", marginBottom: Spacing.sm, gap: Spacing.sm },
+  removePhoneBtn: { backgroundColor: '#FEE2E2', width: 44, height: 44, borderRadius: Radius.sm, justifyContent: "center", alignItems: "center" },
+  addPhoneBtn: { paddingVertical: Spacing.md, borderRadius: Radius.sm, alignItems: "center" },
+  addPhoneText: { fontSize: Typography.fontSize.sm },
+  modalButtons: { flexDirection: "row", gap: Spacing.md, marginTop: Spacing.lg },
 
-  profileModalContainer: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.7)" },
-  profileModalContent: { backgroundColor: "#fff", height: "85%", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 30, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 20 },
-  closeProfileBtn: { position: "absolute", top: 20, right: 20, backgroundColor: "#F3F4F6", width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
-  closeProfileText: { fontSize: 18, fontWeight: "900", color: "#4B5563" },
-  profileAvatarWrapper: { shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15, marginBottom: 20, marginTop: 10 },
-  profileAvatar: { width: 130, height: 130, borderRadius: 65, borderWidth: 4, borderColor: "#fff" },
-  profileAvatarPlaceholder: { width: 130, height: 130, borderRadius: 65, justifyContent: "center", alignItems: "center", borderWidth: 4, borderColor: "#fff" },
-  profileAvatarText: { color: "#fff", fontSize: 44, fontWeight: "900" },
-  profileName: { fontSize: 32, fontWeight: "900", color: "#111827", marginBottom: 12, textAlign: "center", letterSpacing: -0.5 },
-  profileTagPill: { backgroundColor: "#F3F4F6", paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, marginBottom: 35 },
-  profileTagText: { fontSize: 13, fontWeight: "800", color: "#4B5563", textTransform: "uppercase", letterSpacing: 1 },
-  profileActionRow: { flexDirection: "row", justifyContent: "center", gap: 15, marginBottom: 35, width: "100%" },
-  profileActionBtn: { backgroundColor: "#fff", width: 65, height: 65, borderRadius: 32.5, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-  profileActionIcon: { fontSize: 22, marginBottom: 4 },
-  profileActionLabel: { fontSize: 11, fontWeight: "700", color: "#111827" },
+  // Profile Sheet modal
+  profileModalContainer: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15,23,42,0.6)" },
+  profileModalContent: { height: "85%", borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, padding: Spacing.xl, alignItems: "center" },
+  closeProfileBtn: { position: "absolute", top: 16, right: 16, width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
+  profileAvatarWrapper: { marginBottom: Spacing.md, marginTop: Spacing.md },
+  profileAvatar: { width: 110, height: 110, borderRadius: 55, borderWidth: 4, borderColor: "#fff" },
+  profileAvatarPlaceholder: { width: 110, height: 110, borderRadius: 55, justifyContent: "center", alignItems: "center", borderWidth: 4, borderColor: "#fff" },
+  profileAvatarText: { color: "#fff", fontSize: 40 },
+  profileName: { fontSize: Typography.fontSize.xxl, marginBottom: Spacing.xs, textAlign: "center", letterSpacing: -0.5 },
+  profileTagPill: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: Radius.full, marginBottom: Spacing.xl },
+  profileTagText: { fontSize: 11, textTransform: "uppercase", letterSpacing: 1 },
+  profileActionRow: { flexDirection: "row", justifyContent: "center", gap: Spacing.md, marginBottom: Spacing.xl, width: "100%" },
+  profileActionBtn: { width: 68, height: 68, borderRadius: 34, justifyContent: "center", alignItems: "center", gap: Spacing.xs, ...Shadows.sm },
+  profileActionLabel: { fontSize: 10, marginTop: 2 },
   profileDetailsScroll: { width: "100%", flex: 1 },
-  profileSectionTitle: { fontSize: 13, fontWeight: "800", color: "#9CA3AF", marginTop: 10, marginBottom: 12, textTransform: "uppercase", letterSpacing: 1.5 },
-  profileDetailText: { fontSize: 18, color: "#111827", fontWeight: "600", marginBottom: 12, flexDirection: 'row', alignItems: 'center' },
+  profileSectionTitle: { fontSize: Typography.fontSize.xs, marginTop: Spacing.md, marginBottom: Spacing.sm, textTransform: "uppercase", letterSpacing: 1 },
+  profileDetailText: { fontSize: Typography.fontSize.md, flex: 1 },
+  profileDetailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.sm },
 });

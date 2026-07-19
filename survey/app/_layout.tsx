@@ -6,15 +6,35 @@ import { View, Text, Button, StyleSheet, AppState, Alert } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_900Black,
+} from '@expo-google-fonts/inter';
+import * as SplashScreen from 'expo-splash-screen';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SessionProvider, useSession } from '@/hooks/ctx';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   anchor: '(drawer)',
 };
 
 function RootLayoutNav() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_900Black,
+  });
+
   const colorScheme = useColorScheme();
   const { session, isLoading } = useSession();
   const segments = useSegments();
@@ -22,6 +42,12 @@ function RootLayoutNav() {
 
   const [isUnlocked, setIsUnlocked] = useState(false);
   const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
 
   useEffect(() => {
     authenticate();
@@ -82,6 +108,10 @@ function RootLayoutNav() {
       router.replace('/(drawer)/(tabs)' as any);
     }
   }, [session, isLoading, segments]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   if (!isUnlocked) {
     return (

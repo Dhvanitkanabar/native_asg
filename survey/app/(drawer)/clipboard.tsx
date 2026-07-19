@@ -3,27 +3,42 @@ import {
   View,
   Text,
   StyleSheet,
-  Button,
-  TextInput,
   FlatList,
   TouchableOpacity,
   Share,
   Animated,
   Modal,
-  Platform
+  Platform,
+  TextInput,
+  Alert,
+  ScrollView
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from "expo-clipboard";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
+import { 
+  Clipboard as ClipboardIcon, Plus, Search, Copy, Trash2, Edit3, 
+  Share2, Star, X, Info, CheckCircle 
+} from 'lucide-react-native';
+import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppHeader } from '@/components/ui/AppHeader';
+import { AppCard } from '@/components/ui/AppCard';
+import { AppButton } from '@/components/ui/AppButton';
+import { AppInput } from '@/components/ui/AppInput';
+import * as Haptics from 'expo-haptics';
 
 export default function ClipboardScreen() {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+
   const [textToCopy, setTextToCopy] = useState("");
   const [history, setHistory] = useState([]);
   const [search, setSearch] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-  const [editingItem, setEditingItem] = useState(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const fadeAnim = useState(new Animated.Value(0))[0];
   
@@ -31,18 +46,18 @@ export default function ClipboardScreen() {
     loadHistory();
   }, []);
 
-  const showToast = (msg) => {
+  const showToast = (msg: string) => {
     setToastMessage(msg);
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 300,
+      duration: 250,
       useNativeDriver: true,
     }).start();
 
     setTimeout(() => {
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 250,
         useNativeDriver: true,
       }).start(() => setToastMessage(null));
     }, 2000);
@@ -57,7 +72,7 @@ export default function ClipboardScreen() {
     }
   };
 
-  const saveHistory = async (newHistory) => {
+  const saveHistory = async (newHistory: any) => {
     try {
       await AsyncStorage.setItem('@clipboard_history', JSON.stringify(newHistory));
     } catch (e) {
@@ -71,9 +86,9 @@ export default function ClipboardScreen() {
       return;
     }
     await Clipboard.setStringAsync(textToCopy);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    // Automatically add it to our history if we copy from here
-    const newHistory = [
+    const newHistory: any = [
       {
         id: Date.now().toString(),
         text: textToCopy,
@@ -90,16 +105,16 @@ export default function ClipboardScreen() {
   };
 
   const pasteText = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const value = await Clipboard.getStringAsync();
 
     if (value.trim() !== "") {
-      // Don't add duplicate if it's already the most recent
-      if (history.length > 0 && history[0].text === value) {
+      if (history.length > 0 && (history[0] as any).text === value) {
         showToast("Already pasted!");
         return;
       }
       
-      const newHistory = [
+      const newHistory: any = [
         {
           id: Date.now().toString(),
           text: value,
@@ -116,32 +131,43 @@ export default function ClipboardScreen() {
     }
   };
 
-  const deleteItem = (id) => {
-    const newHistory = history.filter((item) => item.id !== id);
+  const deleteItem = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const newHistory = history.filter((item: any) => item.id !== id);
     setHistory(newHistory);
     saveHistory(newHistory);
+    showToast("Item deleted");
   };
 
   const deleteAll = () => {
-    setHistory([]);
-    saveHistory([]);
-    showToast("Cleared all data!");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("Clear History", "Permanently delete all clipboard logs?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Clear All", style: "destructive", onPress: () => {
+        setHistory([]);
+        saveHistory([]);
+        showToast("Cleared all history!");
+      }}
+    ]);
   };
 
-  const copyAgain = async (text) => {
+  const copyAgain = async (text: string) => {
     await Clipboard.setStringAsync(text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     showToast("Copied Again!");
   };
 
-  const toggleFavourite = (id) => {
-    const newHistory = history.map((item) =>
+  const toggleFavourite = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newHistory: any = history.map((item: any) =>
       item.id === id ? { ...item, favorite: !item.favorite } : item
     );
     setHistory(newHistory);
     saveHistory(newHistory);
   };
 
-  const shareText = async (text) => {
+  const shareText = async (text: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await Share.share({ message: text });
     } catch (error) {
@@ -149,20 +175,19 @@ export default function ClipboardScreen() {
     }
   };
 
-  const editClip = (item) => {
+  const editClip = (item: any) => {
     setEditingItem(item.id);
     setEditingText(item.text);
   };
 
   const saveEditedClip = () => {
     if (!editingItem) return;
-    
     if (editingText.trim() === "") {
       showToast("Text cannot be empty!");
       return;
     }
 
-    const newHistory = history.map((item) =>
+    const newHistory: any = history.map((item: any) =>
       item.id === editingItem ? { ...item, text: editingText } : item
     );
     setHistory(newHistory);
@@ -170,372 +195,229 @@ export default function ClipboardScreen() {
     setEditingItem(null);
     setEditingText("");
     showToast("Clip updated!");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const filteredHistory = history.filter((item) => {
+  const filteredHistory = history.filter((item: any) => {
     const matchesSearch = item.text.toLowerCase().includes(search.toLowerCase());
     const matchesFavorite = showFavoritesOnly ? item.favorite : true;
     return matchesSearch && matchesFavorite;
   });
 
-  const renderRightActions = (id) => {
+  const renderRightActions = (id: string) => {
     return (
       <TouchableOpacity
-        style={styles.deleteSwipe}
+        style={[styles.deleteSwipe, { backgroundColor: theme.danger }]}
         onPress={() => deleteItem(id)}
       >
-        <Ionicons name="trash-outline" size={24} color="#fff" />
-        <Text style={styles.deleteSwipeText}>Delete</Text>
+        <Trash2 size={22} color="#fff" />
+        <Text style={[styles.deleteSwipeText, { fontFamily: Typography.fontFamily.bold }]}>Delete</Text>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Clipboard Manager</Text>
-      <Text style={styles.subtitle}>Save notes, IDs, and locations</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]} edges={['top']}>
+      <AppHeader title="Clipboard Manager" showBack />
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          placeholder="Type something to copy..."
-          placeholderTextColor="#999"
-          value={textToCopy}
-          onChangeText={setTextToCopy}
-          style={[styles.input, { flex: 1, marginBottom: 0 }]}
-        />
-        {textToCopy.length > 0 && (
-          <TouchableOpacity onPress={() => setTextToCopy("")} style={styles.clearIcon}>
-            <Ionicons name="close-circle" size={20} color="#999" />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Copy paste panel */}
+        <AppCard variant="elevated" style={styles.card}>
+          <AppInput
+            placeholder="Type something to copy..."
+            value={textToCopy}
+            onChangeText={setTextToCopy}
+            icon={<ClipboardIcon size={18} color={theme.textTertiary} />}
+            containerStyle={{ marginBottom: Spacing.sm }}
+          />
+
+          <View style={styles.row}>
+            <AppButton 
+              title="Copy" 
+              onPress={copyText} 
+              style={styles.actionBtn}
+              icon={<Copy size={16} color="#fff" />}
+            />
+            <AppButton 
+              title="Paste Notes" 
+              variant="secondary"
+              onPress={pasteText} 
+              style={styles.actionBtn}
+              icon={<ClipboardIcon size={16} color={theme.text} />}
+            />
+          </View>
+        </AppCard>
+
+        {/* Search bar & Fav filters */}
+        <View style={styles.searchRow}>
+          <View style={{ flex: 1 }}>
+            <AppInput
+              placeholder="Search history..."
+              value={search}
+              onChangeText={setSearch}
+              icon={<Search size={18} color={theme.textTertiary} />}
+              containerStyle={{ marginBottom: 0 }}
+            />
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.favFilterBtn,
+              { backgroundColor: theme.surfaceElevated, borderColor: theme.border, borderWidth: 1.5 },
+              showFavoritesOnly && { backgroundColor: theme.warning, borderColor: theme.warning }
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFavoritesOnly(!showFavoritesOnly);
+            }}
+          >
+            <Star size={16} color={showFavoritesOnly ? '#fff' : theme.textSecondary} fill={showFavoritesOnly ? '#fff' : 'transparent'} />
+            <Text style={[styles.favFilterText, { fontFamily: Typography.fontFamily.bold }, showFavoritesOnly ? { color: '#fff' } : { color: theme.textSecondary }]}>
+              {showFavoritesOnly ? "Favorites" : "All"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {history.length > 0 && (
+          <TouchableOpacity onPress={deleteAll} style={styles.clearAllBtn}>
+            <Trash2 size={14} color={theme.danger} />
+            <Text style={[styles.clearAllText, { color: theme.danger, fontFamily: Typography.fontFamily.bold }]}>Clear History</Text>
           </TouchableOpacity>
         )}
-      </View>
 
-      <View style={styles.row}>
-        <TouchableOpacity style={styles.primaryButton} onPress={copyText}>
-          <Ionicons name="copy-outline" size={20} color="#fff" style={{marginRight: 6}} />
-          <Text style={styles.primaryButtonText}>Copy</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.secondaryButton} onPress={pasteText}>
-          <Ionicons name="clipboard-outline" size={20} color="#fff" style={{marginRight: 6}} />
-          <Text style={styles.secondaryButtonText}>Paste Notes</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.row}>
-        <TextInput
-          placeholder="Search clips..."
-          placeholderTextColor="#999"
-          value={search}
-          onChangeText={setSearch}
-          style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 10 }]}
-        />
-        <TouchableOpacity
-          style={[styles.favFilterBtn, showFavoritesOnly && styles.favFilterActive]}
-          onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
-        >
-          <Text style={[styles.favFilterText, showFavoritesOnly && styles.favFilterTextActive]}>
-            {showFavoritesOnly ? "★ Favs" : "☆ All"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={{ marginBottom: 15, alignSelf: 'flex-end' }}>
-        <TouchableOpacity onPress={deleteAll}>
-          <Text style={{ color: 'red', fontWeight: '600' }}>Clear All Data</Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={filteredHistory}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', marginTop: 50 }}>
-            <Ionicons name="clipboard-outline" size={60} color="#ccc" />
-            <Text style={styles.empty}>No Clipboard History</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Swipeable renderRightActions={() => renderRightActions(item.id)}>
-            <View style={styles.card}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Text style={styles.text} numberOfLines={3}>{item.text}</Text>
-                <TouchableOpacity onPress={() => toggleFavourite(item.id)} style={{ padding: 4 }}>
-                  <Text style={styles.star}>
-                    {item.favorite ? "⭐" : "☆"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              
-              <Text style={styles.time}>{item.time}</Text>
-
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => copyAgain(item.text)}>
-                  <Ionicons name="copy-outline" size={16} color="#333" />
-                  <Text style={styles.actionBtnText}>Copy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => shareText(item.text)}>
-                  <Ionicons name="share-social-outline" size={16} color="#333" />
-                  <Text style={styles.actionBtnText}>Share</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => editClip(item)}>
-                  <Ionicons name="pencil-outline" size={16} color="#333" />
-                  <Text style={styles.actionBtnText}>Edit</Text>
-                </TouchableOpacity>
-              </View>
+        <FlatList
+          data={filteredHistory}
+          keyExtractor={(item: any) => item.id}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <ClipboardIcon size={44} color={theme.border} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>No Clipboard History</Text>
             </View>
-          </Swipeable>
-        )}
-      />
+          }
+          renderItem={({ item }: any) => (
+            <AppCard variant="elevated" style={{ padding: 0, marginBottom: Spacing.sm, overflow: 'hidden' }}>
+              <Swipeable renderRightActions={() => renderRightActions(item.id)}>
+                <View style={[styles.historyItem, { backgroundColor: theme.surfaceElevated }]}>
+                  <View style={styles.historyRow}>
+                    <Text style={[styles.historyText, { color: theme.text, fontFamily: Typography.fontFamily.medium }]} numberOfLines={3}>{item.text}</Text>
+                    <TouchableOpacity onPress={() => toggleFavourite(item.id)} style={styles.starBtn}>
+                      <Star size={20} color={item.favorite ? theme.warning : theme.textTertiary} fill={item.favorite ? theme.warning : 'transparent'} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={[styles.time, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{item.time}</Text>
 
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity style={[styles.actionIconButton, { backgroundColor: theme.surface }]} onPress={() => copyAgain(item.text)}>
+                      <Copy size={12} color={theme.text} />
+                      <Text style={[styles.actionIconButtonText, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Copy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionIconButton, { backgroundColor: theme.surface }]} onPress={() => shareText(item.text)}>
+                      <Share2 size={12} color={theme.text} />
+                      <Text style={[styles.actionIconButtonText, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Share</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionIconButton, { backgroundColor: theme.surface }]} onPress={() => editClip(item)}>
+                      <Edit3 size={12} color={theme.text} />
+                      <Text style={[styles.actionIconButtonText, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Swipeable>
+            </AppCard>
+          )}
+        />
+        
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Toast Alert */}
       {toastMessage && (
         <Animated.View style={[styles.toast, { opacity: fadeAnim }]}>
-          <Text style={styles.toastText}>{toastMessage}</Text>
+          <CheckCircle size={16} color="#fff" />
+          <Text style={[styles.toastText, { fontFamily: Typography.fontFamily.bold }]}>{toastMessage}</Text>
         </Animated.View>
       )}
 
-      {/* Edit Modal */}
+      {/* ====== Edit Modal ====== */}
       <Modal visible={!!editingItem} transparent animationType="fade">
         <View style={styles.modalBackground}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Edit Clip</Text>
+          <AppCard variant="glass" style={styles.modalContent}>
+            <Text style={[styles.modalTitle, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>Edit Clip</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border, fontFamily: Typography.fontFamily.medium }]}
               value={editingText}
               onChangeText={setEditingText}
               multiline
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#FF3B30' }]} onPress={() => setEditingItem(null)}>
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#007AFF' }]} onPress={saveEditedClip}>
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Save</Text>
-              </TouchableOpacity>
+              <AppButton 
+                title="Cancel" 
+                variant="outline" 
+                onPress={() => setEditingItem(null)} 
+                style={{ flex: 1 }}
+              />
+              <AppButton 
+                title="Save" 
+                onPress={saveEditedClip} 
+                style={{ flex: 1 }}
+              />
             </View>
-          </View>
+          </AppCard>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-    padding: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 20,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-  },
-  clearIcon: {
-    marginLeft: -35,
-    marginRight: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 15,
-    alignItems: "center",
-  },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: "#007AFF",
-    paddingVertical: 14,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 8,
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: "#34C759",
-    paddingVertical: 14,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  secondaryButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
+  container: { flex: 1 },
+  scrollContent: { padding: Spacing.lg },
+  card: { borderWidth: 0, padding: Spacing.lg },
+  row: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.xs },
+  actionBtn: { flex: 1 },
+  
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginVertical: Spacing.md },
   favFilterBtn: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
+    height: 56, flexDirection: 'row', alignItems: 'center', 
+    justifyContent: 'center', paddingHorizontal: Spacing.lg, borderRadius: Radius.md, gap: Spacing.xs
   },
-  favFilterActive: {
-    backgroundColor: "#F59E0B",
+  favFilterText: { fontSize: Typography.fontSize.sm },
+
+  clearAllBtn: { 
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, 
+    alignSelf: 'flex-end', marginBottom: Spacing.sm, padding: Spacing.xs 
   },
-  favFilterText: {
-    fontWeight: "bold",
-    color: "#4B5563",
-  },
-  favFilterTextActive: {
-    color: "#fff",
-  },
-  card: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 16,
-    marginVertical: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  text: {
-    fontSize: 16,
-    color: "#111827",
-    marginBottom: 8,
-    paddingRight: 30,
-    lineHeight: 22,
-  },
-  time: {
-    color: "#9CA3AF",
-    marginBottom: 12,
-    fontSize: 12,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    gap: 10,
-  },
-  actionBtn: {
-    backgroundColor: "#F3F4F6",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionBtnText: {
-    color: "#4B5563",
-    fontWeight: "600",
-    marginLeft: 4,
-    fontSize: 13,
-  },
-  star: {
-    fontSize: 20,
-  },
-  empty: {
-    textAlign: "center",
-    marginTop: 10,
-    fontSize: 16,
-    color: "#9CA3AF",
-    fontWeight: "500",
-  },
-  deleteSwipe: {
-    backgroundColor: "#FF3B30",
-    justifyContent: "center",
-    alignItems: "center",
-    width: 80,
-    marginVertical: 8,
-    borderRadius: 16,
-    marginLeft: 10,
-  },
-  deleteSwipeText: {
-    color: "#fff",
-    fontWeight: "bold",
-    marginTop: 4,
-  },
+  clearAllText: { fontSize: Typography.fontSize.xs + 1 },
+
+  emptyContainer: { alignItems: 'center', paddingVertical: Spacing.huge, gap: Spacing.sm },
+  emptyText: { fontSize: Typography.fontSize.sm },
+
+  // List History
+  historyItem: { padding: Spacing.lg },
+  historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.md },
+  historyText: { fontSize: Typography.fontSize.md, flex: 1, lineHeight: 22 },
+  starBtn: { padding: 4 },
+  time: { fontSize: 10, marginTop: Spacing.xs, marginBottom: Spacing.md },
+  
+  buttonRow: { flexDirection: 'row', gap: Spacing.sm },
+  actionIconButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: Spacing.md, borderRadius: Radius.xs, gap: Spacing.xs },
+  actionIconButtonText: { fontSize: Typography.fontSize.xs },
+
+  deleteSwipe: { justifyContent: 'center', alignItems: 'center', width: 74, height: '100%', gap: Spacing.xs },
+  deleteSwipeText: { color: '#fff', fontSize: 10 },
+
   toast: {
-    position: "absolute",
-    bottom: 40,
-    alignSelf: "center",
-    backgroundColor: "rgba(17,24,39,0.9)",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    position: "absolute", bottom: 60, alignSelf: "center",
+    backgroundColor: "rgba(15,23,42,0.9)", paddingVertical: Spacing.sm + 2, paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.full, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, ...Shadows.md
   },
-  toastText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContainer: {
-    backgroundColor: "#fff",
-    width: "100%",
-    borderRadius: 20,
-    padding: 24,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 120,
-    textAlignVertical: "top",
-    marginBottom: 24,
-    fontSize: 16,
-    color: "#111827",
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  }
+  toastText: { color: "#fff", fontSize: Typography.fontSize.sm },
+
+  // Edit Modal
+  modalBackground: { flex: 1, backgroundColor: "rgba(15,23,42,0.6)", justifyContent: "center", alignItems: "center", padding: Spacing.xl },
+  modalContent: { width: "100%", padding: Spacing.xl, borderRadius: Radius.xl },
+  modalTitle: { fontSize: Typography.fontSize.lg, marginBottom: Spacing.lg, textAlign: "center" },
+  modalInput: { borderWidth: 1.5, borderRadius: Radius.md, padding: Spacing.md, minHeight: 100, textAlignVertical: "top", marginBottom: Spacing.lg, fontSize: Typography.fontSize.md },
+  modalButtons: { flexDirection: 'row', gap: Spacing.md },
 });

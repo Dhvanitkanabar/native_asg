@@ -1,39 +1,65 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useSession } from '@/hooks/ctx';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Mail, Lock, ShieldCheck } from 'lucide-react-native';
+import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppButton } from '@/components/ui/AppButton';
+import { AppInput } from '@/components/ui/AppInput';
+import { AppCard } from '@/components/ui/AppCard';
 
 export default function Login() {
   const { signIn } = useSession();
+  const router = useRouter();
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? 'light'];
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validate = () => {
+    const newErrors = {};
+    if (!email.trim()) {
+      newErrors.email = 'Email address is required';
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+    if (!password) {
+      newErrors.password = 'Password is required';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleLogin = async () => {
-    if (email.trim() === '' || password.trim() === '') {
-      Alert.alert("Error", "Please enter both email and password.");
-      return;
-    }
+    if (!validate()) return;
+    setLoading(true);
 
     try {
       const usersStr = await AsyncStorage.getItem('@users');
       const users = usersStr ? JSON.parse(usersStr) : [];
-
-      const user = users.find((u) => u.email === email.trim());
+      const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
 
       if (!user) {
         Alert.alert("Error", "No account found with this email. Please sign up.");
+        setLoading(false);
         return;
       }
 
       if (user.password !== password) {
         Alert.alert("Error", "Incorrect password.");
+        setLoading(false);
         return;
       }
 
-      // Successful login
+      // Generate user profile
       const newProfile = {
-        name: email.split('@')[0], // Extract name from email
+        name: email.split('@')[0],
         role: 'Field Inspector',
         email: email.trim(),
         photoUri: null,
@@ -43,98 +69,142 @@ export default function Login() {
       signIn();
     } catch (e) {
       Alert.alert("Error", "Failed to log in.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Sign in to access your Clipboard</Text>
-      </View>
+    <LinearGradient
+      colors={colorScheme === 'dark' ? ['#0F172A', '#1E1B4B'] : ['#EEF2FF', '#E0E7FF']}
+      style={styles.container}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Logo / Header Branding */}
+          <View style={styles.headerContainer}>
+            <View style={[styles.logoIconBg, { backgroundColor: theme.primary + '18' }]}>
+              <ShieldCheck size={36} color={theme.primary} />
+            </View>
+            <Text
+              style={[
+                styles.title,
+                {
+                  color: theme.text,
+                  fontFamily: Typography.fontFamily.black,
+                  fontSize: Typography.fontSize.h1,
+                },
+              ]}
+            >
+              Smart Survey
+            </Text>
+            <Text
+              style={[
+                styles.subtitle,
+                {
+                  color: theme.textSecondary,
+                  fontFamily: Typography.fontFamily.medium,
+                  fontSize: Typography.fontSize.md,
+                },
+              ]}
+            >
+              Sign in to manage and secure field reports
+            </Text>
+          </View>
 
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Email address"
-          placeholderTextColor="#888"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#888"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+          {/* Form Card */}
+          <AppCard variant="glass" style={styles.formCard}>
+            <AppInput
+              label="Email Address"
+              placeholder="name@company.com"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (errors.email) setErrors({ ...errors, email: undefined });
+              }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              error={errors.email}
+              icon={<Mail size={20} color={theme.textTertiary} />}
+            />
 
-        <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-          <Text style={styles.loginBtnText}>Log In</Text>
-        </TouchableOpacity>
+            <AppInput
+              label="Password"
+              placeholder="Enter your password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (errors.password) setErrors({ ...errors, password: undefined });
+              }}
+              secureTextEntry
+              error={errors.password}
+              icon={<Lock size={20} color={theme.textTertiary} />}
+            />
 
-        <TouchableOpacity style={styles.linkBtn} onPress={() => router.replace('/signup')}>
-          <Text style={styles.linkBtnText}>Don't have an account? Sign Up</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+            <AppButton
+              title="Sign In"
+              onPress={handleLogin}
+              loading={loading}
+              style={styles.button}
+            />
+
+            <AppButton
+              title="Create Account"
+              onPress={() => router.replace('/signup')}
+              variant="outline"
+              style={styles.signupButton}
+            />
+          </AppCard>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 24,
-    justifyContent: 'center',
   },
-  header: {
-    marginBottom: 40,
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: Spacing.xxl,
+  },
+  headerContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.huge,
+  },
+  logoIconBg: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: Spacing.lg,
   },
-  form: {
-    gap: 16,
+  formCard: {
+    width: '100%',
+    padding: Spacing.xl,
   },
-  input: {
-    backgroundColor: '#f5f5f5',
-    padding: 16,
-    borderRadius: 12,
-    fontSize: 16,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#eee',
+  button: {
+    marginTop: Spacing.md,
   },
-  loginBtn: {
-    backgroundColor: '#007AFF',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  loginBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  linkBtn: {
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  linkBtnText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
+  signupButton: {
+    marginTop: Spacing.sm,
   },
 });

@@ -10,17 +10,19 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSession } from '@/hooks/ctx';
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const router = useRouter();
+  const { signOut } = useSession();
 
   // State
   const [profile, setProfile] = useState({
-    name: 'Surveyor John',
-    role: 'Field Inspector',
-    email: 'john.doe@surveyapp.com',
+    name: '',
+    role: '',
+    email: '',
     photoUri: null,
   });
   const [stats, setStats] = useState({
@@ -109,7 +111,7 @@ export default function ProfileScreen() {
       { 
         text: 'Log Out', 
         style: 'destructive',
-        onPress: () => Alert.alert('Logged Out', 'In a real app, this would clear your session.')
+        onPress: () => signOut()
       }
     ]);
   };
@@ -192,7 +194,10 @@ export default function ProfileScreen() {
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={[styles.menuCard, { backgroundColor: theme.background }]}>
-            {renderMenuItem('person-circle-outline', 'Personal Information', profile.email, () => setIsEditModalVisible(true))}
+            {renderMenuItem('person-circle-outline', 'Personal Information', profile.email, () => {
+              setEditForm({ ...profile });
+              setIsEditModalVisible(true);
+            })}
             <View style={styles.divider} />
             {renderMenuItem('notifications-outline', 'Notifications', 'On', () => router.push('/(drawer)/settings'))}
             <View style={styles.divider} />

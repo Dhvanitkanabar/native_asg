@@ -4,12 +4,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useState, useCallback } from 'react';
 
 export default function DashboardScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const router = useRouter();
+  
+  const [profile, setProfile] = useState({ name: 'User', photoUri: null });
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadProfile = async () => {
+        try {
+          const stored = await AsyncStorage.getItem('@user_profile');
+          if (stored) {
+            setProfile(JSON.parse(stored));
+          }
+        } catch (e) {
+          console.log(e);
+        }
+      };
+      loadProfile();
+    }, [])
+  );
 
   const handleNewSurvey = () => {
     router.push('/(drawer)/survey');
@@ -21,10 +41,23 @@ export default function DashboardScreen() {
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.headerGreeting, { color: theme.icon }]}>Good Morning,</Text>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Dhvanit</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+            {profile.name || 'User'}
+          </Text>
         </View>
-        <Pressable style={styles.profileBadge}>
-          <Image source={require('@/assets/images/avatar.jpeg')} style={styles.avatar} />
+        <Pressable 
+          style={styles.profileBadge} 
+          onPress={() => router.push('/(drawer)/(tabs)/profile')}
+        >
+          {profile.photoUri ? (
+            <Image source={{ uri: profile.photoUri }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: theme.tint + '20' }]}>
+              <Text style={{ color: theme.tint, fontWeight: 'bold', fontSize: 20 }}>
+                {profile.name ? profile.name.charAt(0).toUpperCase() : 'U'}
+              </Text>
+            </View>
+          )}
           <View style={[styles.activeIndicator, { borderColor: theme.background }]} />
         </Pressable>
       </View>
@@ -157,6 +190,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+  },
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   activeIndicator: {
     position: 'absolute',

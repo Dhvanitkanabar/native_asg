@@ -11,6 +11,7 @@ import {
   FileText, LogOut, ChevronRight, Settings 
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/hooks/ctx';
 import * as Haptics from 'expo-haptics';
@@ -45,7 +46,25 @@ export default function SettingsScreen() {
 
   const toggleSetting = async (key: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const updated = { ...settings, [key]: !(settings as any)[key] };
+    const targetVal = !(settings as any)[key];
+
+    if (key === 'pushNotifications' && targetVal) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert(
+          'Notification Permission',
+          'Please enable system notification settings to receive survey alerts.'
+        );
+        return;
+      }
+    }
+
+    const updated = { ...settings, [key]: targetVal };
     setSettings(updated);
     try {
       await AsyncStorage.setItem('@app_settings', JSON.stringify(updated));
@@ -56,7 +75,7 @@ export default function SettingsScreen() {
 
   const handleLogout = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+    Alert.alert('Log Out', 'Are you sure you want to log out of your profile?', [
       { text: 'Cancel', style: 'cancel' },
       { 
         text: 'Log Out', 
@@ -67,7 +86,7 @@ export default function SettingsScreen() {
   };
 
   const renderToggleRow = (icon: React.ReactNode, title: string, subtitle: string | null, settingKey: string, color: string) => (
-    <View style={styles.row}>
+    <View style={[styles.row, { borderBottomColor: theme.borderLight }]}>
       <View style={[styles.iconContainer, { backgroundColor: color + '12' }]}>
         {icon}
       </View>
@@ -84,9 +103,9 @@ export default function SettingsScreen() {
     </View>
   );
 
-  const renderLinkRow = (icon: React.ReactNode, title: string, color: string, onPress: () => void) => (
+  const renderLinkRow = (icon: React.ReactNode, title: string, color: string, onPress: () => void, isLast = false) => (
     <TouchableOpacity 
-      style={styles.row} 
+      style={[styles.row, !isLast && { borderBottomColor: theme.borderLight }]} 
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
@@ -104,13 +123,13 @@ export default function SettingsScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <AppHeader title="Settings" showBack />
       
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>Notifications</Text>
-        <AppCard variant="elevated" style={styles.card}>
+        <Text style={[styles.sectionTitle, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>Notifications</Text>
+        <AppCard variant="elevated" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           {renderToggleRow(
             <Bell size={18} color={theme.primary} />, 
             'Push Notifications', 
@@ -118,7 +137,6 @@ export default function SettingsScreen() {
             'pushNotifications', 
             theme.primary
           )}
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           {renderToggleRow(
             <Mail size={18} color={theme.success} />, 
             'Email Summaries', 
@@ -128,8 +146,8 @@ export default function SettingsScreen() {
           )}
         </AppCard>
 
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>Privacy & Security</Text>
-        <AppCard variant="elevated" style={styles.card}>
+        <Text style={[styles.sectionTitle, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>Privacy & Security</Text>
+        <AppCard variant="elevated" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           {renderToggleRow(
             <Fingerprint size={18} color={theme.accent} />, 
             'Biometric Lock', 
@@ -137,7 +155,6 @@ export default function SettingsScreen() {
             'faceId', 
             theme.accent
           )}
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           {renderToggleRow(
             <MapPin size={18} color={theme.warning} />, 
             'Location Auto-Tag', 
@@ -145,39 +162,40 @@ export default function SettingsScreen() {
             'locationTracking', 
             theme.warning
           )}
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           {renderLinkRow(
             <Lock size={18} color={theme.primary} />, 
             'Change Passcode', 
             theme.primary, 
-            () => Alert.alert('Passcode Reset', 'Passcode request instructions sent to your email.')
+            () => Alert.alert('Passcode Reset', 'Passcode request instructions sent to your email.'),
+            true
           )}
         </AppCard>
 
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>Support</Text>
-        <AppCard variant="elevated" style={styles.card}>
+        <Text style={[styles.sectionTitle, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>Support & Info</Text>
+        <AppCard variant="elevated" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           {renderLinkRow(
             <HelpCircle size={18} color={theme.success} />, 
             'Help Center', 
             theme.success, 
             () => Alert.alert('Help Desk', 'Connecting to support services...')
           )}
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           {renderLinkRow(
             <FileText size={18} color={theme.textSecondary} />, 
             'Terms of Service', 
             theme.textSecondary, 
-            () => Alert.alert('TOS', 'Opening Terms and Disclaimers document...')
+            () => Alert.alert('TOS', 'Opening Terms and Disclaimers document...'),
+            true
           )}
         </AppCard>
 
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary, fontFamily: Typography.fontFamily.bold }]}>Account Actions</Text>
-        <AppCard variant="elevated" style={styles.card}>
+        <Text style={[styles.sectionTitle, { color: theme.danger, fontFamily: Typography.fontFamily.bold }]}>Account Actions</Text>
+        <AppCard variant="elevated" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: Spacing.xl }]}>
           {renderLinkRow(
             <LogOut size={18} color={theme.danger} />, 
             'Log Out Profile', 
             theme.danger, 
-            handleLogout
+            handleLogout,
+            true
           )}
         </AppCard>
 
@@ -192,25 +210,40 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: 100 },
+  scrollContent: { paddingHorizontal: Spacing.xl, paddingBottom: 60 },
   sectionTitle: {
-    fontSize: Typography.fontSize.xs,
+    fontSize: 11,
     marginTop: Spacing.xl,
     marginBottom: Spacing.sm,
-    marginLeft: Spacing.sm,
+    marginLeft: Spacing.xs,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.2,
   },
-  card: { paddingVertical: Spacing.xs, borderRadius: Radius.md, borderWidth: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg },
+  card: { 
+    borderRadius: Radius.lg, 
+    borderWidth: 1, 
+    overflow: 'hidden',
+    paddingVertical: 0,
+    ...Shadows.md
+  },
+  row: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: Spacing.lg, 
+    paddingHorizontal: Spacing.xl,
+    borderBottomWidth: 1,
+  },
   iconContainer: {
-    width: 36, height: 36, borderRadius: Radius.sm,
-    justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md,
+    width: 38, 
+    height: 38, 
+    borderRadius: Radius.md,
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: Spacing.md,
   },
-  rowTextContainer: { flex: 1 },
+  rowTextContainer: { flex: 1, paddingRight: Spacing.sm },
   rowTitle: { fontSize: Typography.fontSize.md },
-  rowSubtitle: { fontSize: Typography.fontSize.xs, marginTop: 2 },
-  divider: { height: 1, marginLeft: 66 },
-  versionContainer: { marginTop: Spacing.huge, alignItems: 'center' },
-  versionText: { fontSize: Typography.fontSize.sm },
+  rowSubtitle: { fontSize: Typography.fontSize.xs - 1, marginTop: 3 },
+  versionContainer: { marginTop: Spacing.huge, alignItems: 'center', marginBottom: Spacing.xl },
+  versionText: { fontSize: Typography.fontSize.sm, letterSpacing: 0.5 },
 });

@@ -9,10 +9,10 @@ import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme'
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { 
   Search, Download, Trash2, Calendar, MapPin, User, Phone, Info, 
-  Share2, ChevronRight, X, Copy, ChevronLeft, Images, Image as ImageIcon
+  Share2, ChevronRight, X, Copy, ChevronLeft, Images, Image as ImageIcon, Menu
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -27,6 +27,7 @@ const PRIORITIES = ['All', 'Low', 'Medium', 'High', 'Critical'];
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
+  const navigation = useNavigation<any>();
   
   const [surveys, setSurveys] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -247,7 +248,16 @@ export default function HistoryScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>History</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity 
+            onPress={() => navigation.openDrawer()} 
+            style={[styles.menuButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            activeOpacity={0.7}
+          >
+            <Menu size={22} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>History</Text>
+        </View>
         <TouchableOpacity 
           style={[styles.exportAllBtn, { backgroundColor: theme.primary + '12' }]} 
           onPress={exportAllSurveys}
@@ -504,7 +514,16 @@ const styles = StyleSheet.create({
   // Header
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.xxl, paddingTop: Spacing.lg, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.xl, paddingTop: Spacing.md, paddingBottom: Spacing.md,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.md,
+    borderWidth: 1,
   },
   headerTitle: { fontSize: Typography.fontSize.xxl, letterSpacing: -0.3 },
   exportAllBtn: {

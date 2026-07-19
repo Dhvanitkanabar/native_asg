@@ -16,10 +16,12 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as ClipboardPkg from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { AppInput } from '@/components/ui/AppInput';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppCard } from '@/components/ui/AppCard';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { AppBadge } from '@/components/ui/AppBadge';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -133,6 +135,33 @@ export default function SurveyScreen() {
             history.unshift(newSurvey);
             await AsyncStorage.setItem('@surveys_history', JSON.stringify(history));
             await AsyncStorage.removeItem('@draft_survey');
+
+            // Trigger local notification alert if approved in settings
+            try {
+              const savedSettingsStr = await AsyncStorage.getItem('@app_settings');
+              let pushNotifications = true;
+              if (savedSettingsStr) {
+                const savedSettings = JSON.parse(savedSettingsStr);
+                pushNotifications = savedSettings.pushNotifications !== false;
+              }
+
+              if (pushNotifications) {
+                const { status } = await Notifications.getPermissionsAsync();
+                if (status === 'granted') {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: 'Survey Submitted 📝',
+                      body: `Inspection report for "${siteName}" has been saved.`,
+                      sound: true,
+                    },
+                    trigger: null, // trigger immediately
+                  });
+                }
+              }
+            } catch (notifyErr) {
+              console.log('Notification trigger error:', notifyErr);
+            }
+
             resetForm();
             router.push('/(drawer)/(tabs)/history');
           } catch (error) {
@@ -373,6 +402,7 @@ export default function SurveyScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <AppHeader title="New Survey" showBack />
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
         style={styles.container}

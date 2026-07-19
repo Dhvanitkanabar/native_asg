@@ -18,14 +18,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Contacts from "expo-contacts";
 import * as Clipboard from "expo-clipboard";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Swipeable } from "react-native-gesture-handler";
 import sectionListGetItemLayout from 'react-native-section-list-get-item-layout';
 import { 
   Users, User, Plus, Search, Mail, Phone, Trash2, Star, 
-  X, ChevronRight, Copy, MessageSquare, ExternalLink, RefreshCw 
+  X, ChevronRight, Copy, MessageSquare, ExternalLink, RefreshCw, Menu
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useNavigation } from 'expo-router';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppInput } from '@/components/ui/AppInput';
@@ -39,6 +41,7 @@ const HEADER_HEIGHT = 36;
 const ContactScreen = () => {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
+  const navigation = useNavigation();
 
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
@@ -56,26 +59,54 @@ const ContactScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [favorites, setFavorites] = useState([]); 
 
+  const isFirstRender = useRef(true);
+
   const getContacts = async () => {
-    const { status } = await Contacts.requestPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Please allow contacts permission.");
-      setRefreshing(false);
-      return;
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      
+      // Load local contacts cache first
+      const stored = await AsyncStorage.getItem('contactsList');
+      let localContacts = stored ? JSON.parse(stored) : [];
+
+      if (status !== "granted") {
+        setContacts(localContacts);
+        setFilteredContacts(localContacts);
+        setRefreshing(false);
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Image, Contacts.Fields.Emails],
+      });
+
+      const deviceContacts = data.filter(c => c.name);
+      
+      // Merge manually created contacts (starting with local-) and device contacts
+      const customLocal = localContacts.filter(c => String(c.id).startsWith('local-'));
+      const combined = [...customLocal, ...deviceContacts];
+      
+      combined.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      setContacts(combined);
+      setFilteredContacts(combined);
+    } catch (e) {
+      console.log('Error loading contacts:', e);
     }
-
-    const { data } = await Contacts.getContactsAsync({
-      fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Image, Contacts.Fields.Emails],
-    });
-
-    const allContacts = data.filter(c => c.name);
-    allContacts.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    setContacts(allContacts);
-    setFilteredContacts(allContacts);
     setRefreshing(false);
   };
 
-  useEffect(() => { getContacts(); }, []);
+  useEffect(() => {
+    getContacts();
+  }, []);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    AsyncStorage.setItem('contactsList', JSON.stringify(contacts))
+      .catch(err => console.log('Error saving contacts list:', err));
+  }, [contacts]);
 
   useEffect(() => {
     let result = contacts;
@@ -249,7 +280,14 @@ const ContactScreen = () => {
           <View style={styles.contactInfo}>
             <Text style={[styles.name, { color: theme.text, fontFamily: Typography.fontFamily.bold }]} numberOfLines={1}>{item.name}</Text>
             <View style={styles.subInfoRow}>
-              <Text style={[styles.number, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{num || "No Phone Number"}</Text>
+              {num ? (
+                <Text style={[styles.number, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]} numberOfLines={1}>{num}</Text>
+              ) : (
+                <View style={[styles.noNumberBadge, { backgroundColor: theme.danger + '14' }]}>
+                  <Phone size={10} color={theme.danger} />
+                  <Text style={[styles.noNumberText, { color: theme.danger, fontFamily: Typography.fontFamily.bold }]}>No Number</Text>
+                </View>
+              )}
               {tag !== "Other" && (
                 <View style={[styles.smallTag, { backgroundColor: theme.primary + '12' }]}>
                   <Text style={[styles.smallTagText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>{tag}</Text>
@@ -270,9 +308,18 @@ const ContactScreen = () => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.heading, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>Contacts</Text>
-          <Text style={[styles.counterText, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{contacts.length} total entries</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity
+            onPress={() => navigation.openDrawer()}
+            style={[styles.menuBtn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+            activeOpacity={0.7}
+          >
+            <Menu size={20} color={theme.text} />
+          </TouchableOpacity>
+          <View>
+            <Text style={[styles.heading, { color: theme.text, fontFamily: Typography.fontFamily.black }]}>Contacts</Text>
+            <Text style={[styles.counterText, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>{contacts.length} total entries</Text>
+          </View>
         </View>
         <AppButton 
           title="Add" 
@@ -344,9 +391,22 @@ const ContactScreen = () => {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Users size={48} color={theme.border} />
+              <View style={[styles.emptyIconBg, { backgroundColor: theme.primary + '10' }]}>
+                <Users size={52} color={theme.primary + '80'} />
+              </View>
               <Text style={[styles.emptyStateText, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>No Contacts Found</Text>
-              <Text style={[styles.emptyStateSub, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>Try checking permissions or reloading the list.</Text>
+              <Text style={[styles.emptyStateSub, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>
+                {search ? `No results for "${search}"` : 'Grant permission or add contacts manually.'}
+              </Text>
+              {!search && (
+                <TouchableOpacity 
+                  onPress={() => { setContactForm({ name: "", phones: [""], email: "", tag: "Other" }); setModalVisible(true); }}
+                  style={[styles.emptyAddBtn, { backgroundColor: theme.primary }]}
+                >
+                  <Plus size={16} color="#fff" />
+                  <Text style={[styles.emptyAddBtnText, { fontFamily: Typography.fontFamily.bold }]}>Add First Contact</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -571,9 +631,15 @@ const styles = StyleSheet.create({
   sectionHeaderContainer: { height: HEADER_HEIGHT, justifyContent: "center", paddingHorizontal: Spacing.lg, borderBottomWidth: 1 },
   sectionHeader: { fontSize: Typography.fontSize.xs },
   
-  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 80, gap: Spacing.sm },
-  emptyStateText: { fontSize: Typography.fontSize.md + 1 },
-  emptyStateSub: { fontSize: Typography.fontSize.sm },
+  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 60, gap: Spacing.md, paddingHorizontal: Spacing.xxl },
+  emptyIconBg: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
+  emptyStateText: { fontSize: Typography.fontSize.lg },
+  emptyStateSub: { fontSize: Typography.fontSize.sm, textAlign: 'center', lineHeight: 20 },
+  emptyAddBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: Radius.full, marginTop: Spacing.sm },
+  emptyAddBtnText: { color: '#fff', fontSize: Typography.fontSize.sm },
+  noNumberBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.xs },
+  noNumberText: { fontSize: 10 },
+  menuBtn: { width: 40, height: 40, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md, borderWidth: 1 },
 
   cardWrapper: { height: ITEM_HEIGHT },
   card: { height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: Spacing.lg, borderBottomWidth: 1 },
@@ -625,3 +691,5 @@ const styles = StyleSheet.create({
   profileDetailText: { fontSize: Typography.fontSize.md, flex: 1 },
   profileDetailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.sm },
 });
+
+export default ContactScreen;

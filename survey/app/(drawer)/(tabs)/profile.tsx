@@ -8,11 +8,12 @@ import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme'
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { 
   Camera, Briefcase, Mail, FileText, ChevronRight, LogOut, 
-  ShieldCheck, Users, HelpCircle, Info, User, Check, X 
+  ShieldCheck, Users, HelpCircle, Info, User, Check, X, Menu
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect, useRouter } from 'expo-router';
+import * as Contacts from 'expo-contacts';
+import { useFocusEffect, useRouter, useNavigation } from 'expo-router';
 import { useSession } from '@/hooks/ctx';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -26,6 +27,7 @@ export default function ProfileScreen() {
   const theme = Colors[colorScheme ?? 'light'];
   const router = useRouter();
   const { signOut } = useSession();
+  const navigation = useNavigation<any>();
 
   // State
   const [profile, setProfile] = useState({
@@ -62,10 +64,29 @@ export default function ProfileScreen() {
       
       const contactsData = await AsyncStorage.getItem('contactsList');
       const contactsList = contactsData ? JSON.parse(contactsData) : [];
+      let totalContactsCount = contactsList.length;
+
+      // Dynamically load contact count if permission is granted
+      try {
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status === 'granted') {
+          const { data } = await Contacts.getContactsAsync({
+            fields: [Contacts.Fields.PhoneNumbers],
+          });
+          const deviceContacts = data.filter(c => c.name);
+          const customLocal = contactsList.filter((c: any) => String(c.id).startsWith('local-'));
+          totalContactsCount = customLocal.length + deviceContacts.length;
+
+          const combinedList = [...customLocal, ...deviceContacts];
+          await AsyncStorage.setItem('contactsList', JSON.stringify(combinedList));
+        }
+      } catch (err) {
+        console.log('Error counting device contacts in profile:', err);
+      }
 
       setStats({
         totalSurveys: surveysList.length,
-        totalContacts: contactsList.length
+        totalContacts: totalContactsCount
       });
     } catch (e) {
       console.log('Error loading profile/stats', e);
@@ -148,6 +169,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.surface }]} edges={['top']}>
+      {/* Floating Hamburger Menu */}
+      <TouchableOpacity 
+        onPress={() => navigation.openDrawer()} 
+        style={styles.floatingMenuButton}
+        activeOpacity={0.7}
+      >
+        <Menu size={22} color="#fff" />
+      </TouchableOpacity>
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         
         {/* Curved Header Background Gradient */}
@@ -321,6 +351,20 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  floatingMenuButton: {
+    position: 'absolute',
+    top: 16,
+    left: 20,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
   headerBackground: {
     position: 'absolute',
     top: 0,

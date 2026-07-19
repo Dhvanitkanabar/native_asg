@@ -1,16 +1,16 @@
 import React, { useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, Pressable, Image, 
-  Platform, Dimensions
+  Platform, Dimensions, TouchableOpacity
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Layers, TrendingUp, Plus, Camera, History, MapPin, 
-  Users, ChevronRight, Activity, CalendarDays, BarChart4, PieChart as PieIcon 
+  Users, ChevronRight, Activity, CalendarDays, BarChart4, PieChart as PieIcon, Menu
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -124,6 +124,7 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const router = useRouter();
+  const navigation = useNavigation<any>();
   
   const [profile, setProfile] = useState({ name: 'User', photoUri: null });
   const [surveys, setSurveys] = useState([]);
@@ -205,6 +206,13 @@ export default function DashboardScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Premium Header */}
       <View style={styles.header}>
+        <TouchableOpacity 
+          onPress={() => navigation.openDrawer()} 
+          style={[styles.menuButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+          activeOpacity={0.7}
+        >
+          <Menu size={22} color={theme.text} />
+        </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.headerGreeting, { color: theme.textSecondary, fontFamily: Typography.fontFamily.medium }]}>
             {getGreeting()}
@@ -217,7 +225,7 @@ export default function DashboardScreen() {
           <AppAvatar 
             photoUri={profile.photoUri} 
             name={profile.name || 'U'} 
-            size={48} 
+            size={46} 
             showIndicator 
           />
         </Pressable>
@@ -233,13 +241,39 @@ export default function DashboardScreen() {
             style={styles.welcomeCard}
           >
             <View style={styles.welcomeTextContent}>
-              <Text style={[styles.welcomeCardTitle, { fontFamily: Typography.fontFamily.black }]}>Inspection Operations</Text>
-              <Text style={[styles.welcomeCardSubtitle, { fontFamily: Typography.fontFamily.semiBold }]}>ID: STD-2026-X1 • Field Agent</Text>
+              <Text style={[styles.welcomeCardTitle, { fontFamily: Typography.fontFamily.black }]}>Smart Field Survey</Text>
+              <Text style={[styles.welcomeCardSubtitle, { fontFamily: Typography.fontFamily.semiBold }]}>Inspection Operations App • 2026</Text>
             </View>
             <View style={styles.welcomeIconBg}>
               <Activity size={80} color="rgba(255,255,255,0.15)" />
             </View>
           </LinearGradient>
+        </Animated.View>
+
+        {/* Student Details Card */}
+        <Animated.View entering={FadeInDown.delay(150).duration(400)}>
+          <AppCard variant="elevated" style={styles.studentCard}>
+            <View style={[styles.studentBadge, { backgroundColor: theme.primary + '12' }]}>
+              <Layers size={16} color={theme.primary} />
+              <Text style={[styles.studentBadgeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>Student Project</Text>
+            </View>
+            <View style={styles.studentDetailsRow}>
+              <View style={styles.studentDetailItem}>
+                <Text style={[styles.studentDetailLabel, { color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>Name</Text>
+                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Your Name</Text>
+              </View>
+              <View style={[styles.studentDivider, { backgroundColor: theme.border }]} />
+              <View style={styles.studentDetailItem}>
+                <Text style={[styles.studentDetailLabel, { color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>Roll No</Text>
+                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>22CS001</Text>
+              </View>
+              <View style={[styles.studentDivider, { backgroundColor: theme.border }]} />
+              <View style={styles.studentDetailItem}>
+                <Text style={[styles.studentDetailLabel, { color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>Branch</Text>
+                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>B.Tech CSE</Text>
+              </View>
+            </View>
+          </AppCard>
         </Animated.View>
 
         {/* Stats Row */}
@@ -390,13 +424,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.md,
+    borderWidth: 1,
   },
   headerTitleContainer: { flex: 1 },
   headerGreeting: { fontSize: Typography.fontSize.sm, marginBottom: Spacing.xs },
   headerTitle: { fontSize: Typography.fontSize.xxl, letterSpacing: -0.5 },
   scrollContent: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.xs },
+
+  // Student Details Card
+  studentCard: {
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 0,
+  },
+  studentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.xs,
+    marginBottom: Spacing.md,
+  },
+  studentBadgeText: { fontSize: Typography.fontSize.xs },
+  studentDetailsRow: { flexDirection: 'row', alignItems: 'center' },
+  studentDetailItem: { flex: 1, alignItems: 'center' },
+  studentDetailLabel: { fontSize: Typography.fontSize.xs, marginBottom: 2 },
+  studentDetailValue: { fontSize: Typography.fontSize.sm },
+  studentDivider: { width: 1, height: 30, marginHorizontal: Spacing.sm },
 
   // Welcome Card
   welcomeCard: {

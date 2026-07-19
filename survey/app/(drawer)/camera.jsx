@@ -40,6 +40,7 @@ export default function CameraScreen() {
   const [tilt, setTilt] = useState(0);
   const [photo, setPhoto] = useState(null);
   const [captureDetails, setCaptureDetails] = useState(null);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
   
   // Animations
   const scale = useRef(new Animated.Value(1)).current;
@@ -99,7 +100,9 @@ export default function CameraScreen() {
   };
 
   const capturePhoto = async () => {
+    if (isTakingPhoto) return;
     try {
+      setIsTakingPhoto(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       Animated.sequence([
@@ -120,6 +123,8 @@ export default function CameraScreen() {
       }
     } catch (e) {
       console.log(e);
+    } finally {
+      setIsTakingPhoto(false);
     }
   };
 
@@ -338,8 +343,12 @@ export default function CameraScreen() {
             </TouchableOpacity>
 
             <Animated.View style={{ transform: [{ scale }] }}>
-              <TouchableOpacity style={styles.capture} onPress={capturePhoto}>
-                <View style={[styles.captureInner, isLevel && { borderColor: theme.success, borderWidth: 3 }]} />
+              <TouchableOpacity style={styles.capture} onPress={capturePhoto} disabled={isTakingPhoto}>
+                {isTakingPhoto ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <View style={[styles.captureInner, isLevel && { borderColor: theme.success, borderWidth: 3 }]} />
+                )}
               </TouchableOpacity>
             </Animated.View>
 

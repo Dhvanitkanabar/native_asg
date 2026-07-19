@@ -260,12 +260,12 @@ export default function DashboardScreen() {
             <View style={styles.studentDetailsRow}>
               <View style={styles.studentDetailItem}>
                 <Text style={[styles.studentDetailLabel, { color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>Name</Text>
-                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>Your Name</Text>
+                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>dhvanit kanabar</Text>
               </View>
               <View style={[styles.studentDivider, { backgroundColor: theme.border }]} />
               <View style={styles.studentDetailItem}>
                 <Text style={[styles.studentDetailLabel, { color: theme.textTertiary, fontFamily: Typography.fontFamily.medium }]}>Roll No</Text>
-                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>22CS001</Text>
+                <Text style={[styles.studentDetailValue, { color: theme.text, fontFamily: Typography.fontFamily.bold }]}>108616</Text>
               </View>
               <View style={[styles.studentDivider, { backgroundColor: theme.border }]} />
               <View style={styles.studentDetailItem}>
